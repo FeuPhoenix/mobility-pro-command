@@ -1,0 +1,172 @@
+{
+  "name": "MPC - Supplier clarification dispatch",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mpc/clarification-approved",
+        "responseMode": "lastNode"
+      },
+      "id": "scd-01",
+      "name": "Clarification approved",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "notes": "Fired by the app only after a person has reviewed and approved the draft.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "procurement@mobilitypro.example",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "text": "={{ $json.body }}"
+      },
+      "id": "scd-02",
+      "name": "Send to supplier",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Sends the approved text verbatim. This workflow must never compose or alter it.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/case-event",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ caseId: $json.caseId, event: \"clarification.delivered\", at: $now.toISO() }) }}"
+      },
+      "id": "scd-03",
+      "name": "Log on the case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 72,
+        "unit": "hours"
+      },
+      "id": "scd-04",
+      "name": "Wait 72 hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/case-event?caseId={{ $json.caseId }}"
+      },
+      "id": "scd-05",
+      "name": "Revision received?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#procurement",
+        "text": "=No revision from the supplier on case {{ $json.caseId }} after 72 hours."
+      },
+      "id": "scd-06",
+      "name": "Chase the supplier",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1360,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Clarification approved": {
+      "main": [
+        [
+          {
+            "node": "Send to supplier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to supplier": {
+      "main": [
+        [
+          {
+            "node": "Log on the case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log on the case": {
+      "main": [
+        [
+          {
+            "node": "Wait 72 hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 72 hours": {
+      "main": [
+        [
+          {
+            "node": "Revision received?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Revision received?": {
+      "main": [
+        [
+          {
+            "node": "Chase the supplier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

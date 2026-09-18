@@ -1,0 +1,10 @@
+# Keep the deployment to just the application.
+brag-output
+docs
+tests
+playwright.config.ts
+vitest.config.ts
+test-results
+playwright-report
+.demo-data
+.demo-data-e2e

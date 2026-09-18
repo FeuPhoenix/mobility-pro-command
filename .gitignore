@@ -1,0 +1,16 @@
+node_modules
+.next
+.demo-data
+*.tsbuildinfo
+next-env.d.ts
+test-results
+playwright-report
+
+# Generated presentation and promotional artifacts
+.presentation-build/
+.codex-finalizer/
+output/
+brag-output/
+
+.vercel
+.env*

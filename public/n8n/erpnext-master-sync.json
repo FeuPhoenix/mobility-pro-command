@@ -1,0 +1,167 @@
+{
+  "name": "MPC - ERPNext master sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "ems-01",
+      "name": "Hourly",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.ERPNEXT_BASE_URL }}/api/resource/{{ $json.doctype }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filters",
+              "value": "=[[\"modified\",\">\",\"{{ $json.watermark }}\"]]"
+            },
+            {
+              "name": "limit_page_length",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "id": "ems-02",
+      "name": "ERPNext - modified since",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Customer, Item, Warehouse, Item Price, Sales Invoice. READ ONLY - never write to ERPNext from here.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Field mapping is documented in docs/ERPNEXT_INTEGRATION.md.\n// size / ply / pattern are NOT standard Item fields - confirm how they are\n// stored on the live site before trusting this mapping.\nreturn items.map((i) => ({ json: { id: i.json.name, raw: i.json } }));"
+      },
+      "id": "ems-03",
+      "name": "Map to the domain model",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/master-sync",
+        "sendBody": true,
+        "specifyBody": "json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.id }}-{{ $json.raw.modified }}"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "ems-04",
+      "name": "Push the delta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ems-05",
+      "name": "On failure",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        300
+      ],
+      "notes": "Record and alert. Do not blind-retry a write.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Hourly": {
+      "main": [
+        [
+          {
+            "node": "ERPNext - modified since",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ERPNext - modified since": {
+      "main": [
+        [
+          {
+            "node": "Map to the domain model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map to the domain model": {
+      "main": [
+        [
+          {
+            "node": "Push the delta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push the delta": {
+      "main": [
+        [
+          {
+            "node": "On failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

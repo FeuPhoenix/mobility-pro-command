@@ -1,0 +1,146 @@
+{
+  "name": "MPC - Daily operations briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-6"
+            }
+          ]
+        }
+      },
+      "id": "dbr-01",
+      "name": "Daily at 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/briefing"
+      },
+      "id": "dbr-02",
+      "name": "Get the briefing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Exactly what the Overview shows, already ranked and owned.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Group by the person who owns the decision. Deliver what the app produced -\n// do not summarise, re-rank or editorialise the figures.\nconst byOwner = {};\nfor (const e of $input.first().json.exceptions) {\n  (byOwner[e.ownerId] ||= []).push(e);\n}\nreturn Object.entries(byOwner).map(([ownerId, exceptions]) => ({ json: { ownerId, exceptions } }));"
+      },
+      "id": "dbr-03",
+      "name": "Format per owner",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#operations",
+        "text": "={{ $json.headline }}"
+      },
+      "id": "dbr-04",
+      "name": "Post to #operations",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@mobilitypro.example",
+        "toEmail": "={{ $json.ownerEmail }}",
+        "subject": "Your operation today",
+        "text": "={{ $json.summary }}"
+      },
+      "id": "dbr-05",
+      "name": "Email each owner",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Daily at 07:00": {
+      "main": [
+        [
+          {
+            "node": "Get the briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the briefing": {
+      "main": [
+        [
+          {
+            "node": "Format per owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format per owner": {
+      "main": [
+        [
+          {
+            "node": "Post to #operations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to #operations": {
+      "main": [
+        [
+          {
+            "node": "Email each owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

@@ -1,0 +1,185 @@
+{
+  "name": "MPC - Supplier document intake",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "INBOX",
+        "postProcessAction": "read",
+        "options": {}
+      },
+      "id": "sdi-01",
+      "name": "Procurement mailbox",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "notes": "Filter to known supplier domains before enabling in production.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0"
+      },
+      "id": "sdi-02",
+      "name": "Read attachment",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.EXTRACTION_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}"
+      },
+      "id": "sdi-03",
+      "name": "Extract fields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        300
+      ],
+      "notes": "Swap for whichever extraction service you standardise on.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/document-received",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ purchaseOrderId: $json.poRef, kind: $json.kind, reference: $json.reference, fields: $json.fields }) }}"
+      },
+      "id": "sdi-04",
+      "name": "Post to Mobility Pro Command",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        300
+      ],
+      "notes": "The app validates against the purchase order and returns blocking/advisory mismatches. It does NOT open a case.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.blockingCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "sdi-05",
+      "name": "Blocking mismatch?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#procurement",
+        "text": "={{ $json.reference }} does not match {{ $json.purchaseOrderId }} - {{ $json.blockingCount }} blocking, {{ $json.advisoryCount }} advisory. Review: {{ $vars.MPC_BASE_URL }}/operations/documents/{{ $json.documentId }}"
+      },
+      "id": "sdi-06",
+      "name": "Notify procurement",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1360,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Procurement mailbox": {
+      "main": [
+        [
+          {
+            "node": "Read attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read attachment": {
+      "main": [
+        [
+          {
+            "node": "Extract fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract fields": {
+      "main": [
+        [
+          {
+            "node": "Post to Mobility Pro Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Mobility Pro Command": {
+      "main": [
+        [
+          {
+            "node": "Blocking mismatch?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blocking mismatch?": {
+      "main": [
+        [
+          {
+            "node": "Notify procurement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

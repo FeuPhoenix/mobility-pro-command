@@ -1,0 +1,201 @@
+{
+  "name": "MPC - Approval chaser",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */4 * * *"
+            }
+          ]
+        }
+      },
+      "id": "apc-01",
+      "name": "Every four hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/approvals",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "Pending"
+            }
+          ]
+        }
+      },
+      "id": "apc-02",
+      "name": "List pending approvals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Read-only. Approval staleness (CR-5.4) is enforced by the app, not by this reminder.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ageHours }}",
+              "rightValue": 4,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        }
+      },
+      "id": "apc-03",
+      "name": "Older than 4 hours",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": "={{ $json.approverSlackId }}",
+        "text": "={{ $json.title }} has been waiting {{ $json.ageHours }}h. Decide: {{ $vars.MPC_BASE_URL }}/approvals?focus={{ $json.id }}"
+      },
+      "id": "apc-04",
+      "name": "Remind the approver",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ageHours }}",
+              "rightValue": 24,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ]
+        }
+      },
+      "id": "apc-05",
+      "name": "Older than 24 hours?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@mobilitypro.example",
+        "toEmail": "={{ $vars.COMMERCIAL_DIRECTOR_EMAIL }}",
+        "subject": "Approval outstanding over 24h",
+        "text": "={{ $json.title }}"
+      },
+      "id": "apc-06",
+      "name": "Escalate",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1360,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Every four hours": {
+      "main": [
+        [
+          {
+            "node": "List pending approvals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List pending approvals": {
+      "main": [
+        [
+          {
+            "node": "Older than 4 hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Older than 4 hours": {
+      "main": [
+        [
+          {
+            "node": "Remind the approver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remind the approver": {
+      "main": [
+        [
+          {
+            "node": "Older than 24 hours?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Older than 24 hours?": {
+      "main": [
+        [
+          {
+            "node": "Escalate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

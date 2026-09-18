@@ -1,0 +1,211 @@
+{
+  "name": "MPC - Aging stock sweep",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * 1-6"
+            }
+          ]
+        }
+      },
+      "id": "ass-01",
+      "name": "Daily at 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.ERPNEXT_BASE_URL }}/api/resource/Bin",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "[\"item_code\",\"warehouse\",\"actual_qty\",\"stock_value\"]"
+            },
+            {
+              "name": "limit_page_length",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "id": "ass-02",
+      "name": "ERPNext - stock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Read-only. Lot age needs Batch or FIFO Stock Ledger Entry - confirm how stock is tracked on the live site.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.ERPNEXT_BASE_URL }}/api/resource/Delivery Note Item",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "[\"item_code\",\"qty\",\"creation\"]"
+            },
+            {
+              "name": "limit_page_length",
+              "value": "0"
+            }
+          ]
+        }
+      },
+      "id": "ass-03",
+      "name": "ERPNext - trailing sales",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/stock-snapshot",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ takenAt: $now.toISO(), positions: $json.positions, trailingSales: $json.sales }) }}"
+      },
+      "id": "ass-04",
+      "name": "Post snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        300
+      ],
+      "notes": "The app applies rule INV-AGE-180. The threshold lives there, not here.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.newOpportunities.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        }
+      },
+      "id": "ass-05",
+      "name": "New opportunity?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#supply-planning",
+        "text": "=Aging stock: {{ $json.newOpportunities[0].label }} - {{ $json.newOpportunities[0].ageDays }} days, carrying value {{ $json.newOpportunities[0].carryingValue }}."
+      },
+      "id": "ass-06",
+      "name": "Notify supply planning",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1360,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Daily at 06:00": {
+      "main": [
+        [
+          {
+            "node": "ERPNext - stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ERPNext - stock": {
+      "main": [
+        [
+          {
+            "node": "ERPNext - trailing sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ERPNext - trailing sales": {
+      "main": [
+        [
+          {
+            "node": "Post snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post snapshot": {
+      "main": [
+        [
+          {
+            "node": "New opportunity?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New opportunity?": {
+      "main": [
+        [
+          {
+            "node": "Notify supply planning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}

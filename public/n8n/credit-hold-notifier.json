@@ -1,0 +1,174 @@
+{
+  "name": "MPC - Credit hold notifier",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mpc/order-held",
+        "responseMode": "lastNode"
+      },
+      "id": "chn-01",
+      "name": "Order held on credit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/automation/order/{{ $json.orderId }}"
+      },
+      "id": "chn-02",
+      "name": "Fetch the evidence",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "blocked_overdue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "outputKey": "Overdue"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "rightValue": "blocked_limit",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "outputKey": "Over limit"
+            }
+          ]
+        }
+      },
+      "id": "chn-03",
+      "name": "Route by reason",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "#finance-credit",
+        "text": "={{ $json.orderId }} held - {{ $json.headline }} Overdue {{ $json.overdue }}, oldest {{ $json.worstOverdueDays }} days. Clause {{ $json.clause }}."
+      },
+      "id": "chn-04",
+      "name": "Notify credit control",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        300
+      ],
+      "notes": "Carries the evidence to a person. It cannot approve or release anything.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "fromEmail": "noreply@mobilitypro.example",
+        "toEmail": "={{ $json.accountManagerEmail }}",
+        "subject": "={{ $json.orderId }} is on credit hold",
+        "text": "={{ $json.headline }}"
+      },
+      "id": "chn-05",
+      "name": "Copy the account manager",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1140,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Order held on credit": {
+      "main": [
+        [
+          {
+            "node": "Fetch the evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch the evidence": {
+      "main": [
+        [
+          {
+            "node": "Route by reason",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by reason": {
+      "main": [
+        [
+          {
+            "node": "Notify credit control",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify credit control": {
+      "main": [
+        [
+          {
+            "node": "Copy the account manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Cairo",
+    "saveManualExecutions": true
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    }
+  ],
+  "meta": {
+    "description": "Starting point for Mobility Pro Command. Set the MPC_BASE_URL variable and your own credentials before enabling."
+  },
+  "pinData": {}
+}
