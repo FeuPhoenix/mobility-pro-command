@@ -90,11 +90,18 @@ export function parseAmount(fragment: string): { amount: number | null; currency
   if (!currency && /\$/.test(fragment)) currency = 'USD';
   if (!currency && /€/.test(fragment)) currency = 'EUR';
 
-  // Strip the currency words first so "USD" cannot be read as a number.
-  const stripped = upper.replace(/[A-Z]{3}/g, ' ').replace(/[$€£]/g, ' ');
-  const m = /(-?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?)/.exec(stripped);
+  // Strip the currency words and the equipment codes first, so neither "USD"
+  // nor the "40" of "40HC" can be mistaken for the amount.
+  const stripped = upper
+    .replace(/(?:20|40|45)\s?(?:GP|HC|RF)/g, ' ')
+    .replace(/[A-Z]{3}/g, ' ')
+    .replace(/[$€£]/g, ' ');
+
+  // One pattern, not an alternation: an alternation whose first branch caps the
+  // integer part at three digits matches "120" out of "1200.00".
+  const m = /-?\d[\d,]*(?:\.\d+)?/.exec(stripped);
   if (!m) return { amount: null, currency };
-  const amount = Number.parseFloat(m[1].replace(/,/g, ''));
+  const amount = Number.parseFloat(m[0].replace(/,/g, ''));
   return { amount: Number.isFinite(amount) ? amount : null, currency };
 }
 
