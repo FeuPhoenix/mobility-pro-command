@@ -169,6 +169,9 @@ const SURCHARGE_LABELS: { code: string; label: string; pattern: RegExp; basis: C
 
 const NO_AMOUNT = /^\s*(TBA|TBC|to be advised|on request|at cost|-|n\/?a)\s*$/i;
 
+/** Rows that describe cover rather than charges; see the note in text.ts. */
+const NOT_A_CHARGE_LABEL = /^\s*(inclusions?|includes?|included|exclusions?|excludes?|excluded|conditions?|remarks?|notes?)\s*:?\s*$/i;
+
 function basisFrom(text: string): ChargeBasis | null {
   if (/per\s*(container|ctr|box|unit|20|40|45)/i.test(text)) return 'per_container';
   if (/per\s*(shipment|booking)/i.test(text)) return 'per_shipment';
@@ -230,10 +233,18 @@ export function extractFromCells(cells: SheetCell[], filename: string): ExcelExt
   const surcharges: Surcharge[] = [];
   const seen = new Set<string>();
   for (const c of cells) {
+    // A cell sitting to the right of an "Exclusions" label is a list of what is
+    // not covered, not a charge line.
+    const labelLeft = cells.find((x) => x.sheet === c.sheet && x.row === c.row && x.col < c.col);
+    if (labelLeft && NOT_A_CHARGE_LABEL.test(labelLeft.text)) continue;
+    if (NOT_A_CHARGE_LABEL.test(c.text)) continue;
+
     for (const p of SURCHARGE_LABELS) {
-      if (!p.pattern.test(c.text) || seen.has(p.code)) continue;
+      if (!p.pattern.test(c.text)) continue;
+      // Most-specific first: "Origin THC" must not also match the generic rule.
+      if (seen.has(p.code)) break;
       // Skip the header row of a charges table.
-      if (/^\s*(charge|description|item)\s*$/i.test(c.text)) continue;
+      if (/^\s*(charge|description|item)\s*$/i.test(c.text)) break;
       seen.add(p.code);
       const valueCell = rightOf(cells, c);
       const blank = !valueCell || NO_AMOUNT.test(valueCell.text);
@@ -248,6 +259,7 @@ export function extractFromCells(cells: SheetCell[], filename: string): ExcelExt
         sourceRef: cellRef(filename, valueCell ?? c),
         confidence: amount === null ? 'missing' : 'high',
       });
+      break;
     }
   }
 

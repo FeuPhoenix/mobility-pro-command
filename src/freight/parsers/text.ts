@@ -165,6 +165,17 @@ const SURCHARGE_PATTERNS: { code: string; label: string; pattern: RegExp; basis:
 const NO_AMOUNT = /\b(TBA|TBC|to be advised|on request|at cost|as per tariff|not included|excluded)\b/i;
 
 /**
+ * Lines that list what an offer covers rather than what it charges.
+ *
+ * "Excludes: destination terminal handling, customs clearance" names two things
+ * the provider is NOT charging for. Reading them as surcharges with no amount
+ * would wrongly block the offer from being compared, so these lines are skipped
+ * for charge detection entirely.
+ */
+const NOT_A_CHARGE_LINE =
+  /^\s*(includ(es|ed|ing)|exclud(es|ed|ing)|inclusions?|exclusions?|conditions?|remarks?|notes?|subject to)\s*[:-]/i;
+
+/**
  * Pulls surcharges out of a block of text.
  *
  * A recognised label with no readable amount is still returned, with
@@ -179,9 +190,12 @@ export function parseSurcharges(source: TextSource): Surcharge[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
+    if (NOT_A_CHARGE_LINE.test(line)) continue;
     for (const p of SURCHARGE_PATTERNS) {
       if (!p.pattern.test(line)) continue;
-      if (seen.has(p.code)) continue;
+      // The patterns run most-specific first, so "Origin THC" must not also be
+      // picked up by the generic THC rule. One charge per line.
+      if (seen.has(p.code)) break;
       // The base freight line often mentions THC in an "includes" phrase; that
       // is an inclusion, not a separate charge.
       if (/\binclud(es|ing|ed)\b/i.test(line) && !/\d/.test(line.split(/includ/i)[1] ?? '')) continue;
@@ -201,6 +215,7 @@ export function parseSurcharges(source: TextSource): Surcharge[] {
         sourceRef: `${source.label}, line ${i + 1}`,
         confidence: amount === null ? 'missing' : currency ? 'high' : 'medium',
       });
+      break;
     }
   }
   return found;

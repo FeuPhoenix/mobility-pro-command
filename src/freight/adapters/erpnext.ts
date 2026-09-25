@@ -27,6 +27,7 @@
  */
 
 import type { Comparison, Rfq } from '../types';
+import { getSetting } from '../db';
 
 export interface ErpRecordInput {
   idempotencyKey: string;
@@ -84,13 +85,16 @@ export interface ErpAdapter {
  * Its results are always marked `simulated: true` and the UI renders them as
  * "Recorded locally (simulated)" - never as a successful ERPNext write.
  *
- * It fails the first attempt for any comparison whose key ends in an even hex
- * digit, so the recoverable-failure path in the demo is a real failure and a
- * real retry rather than a scripted animation.
+ * When `failFirstAttempt` is on (the demonstration dataset turns it on), the
+ * first attempt for each comparison fails with a timeout and the retry
+ * succeeds. That makes the recoverable-failure path in the demo a real failure
+ * and a real retry against real state, rather than a scripted animation.
  */
 export class SimulatedErp implements ErpAdapter {
   /** Attempts seen per key, so a retry genuinely differs from a first try. */
   private static attempts = new Map<string, number>();
+
+  constructor(private readonly failFirstAttempt = false) {}
 
   static reset(): void {
     SimulatedErp.attempts.clear();
@@ -118,8 +122,7 @@ export class SimulatedErp implements ErpAdapter {
     const seen = (SimulatedErp.attempts.get(input.idempotencyKey) ?? 0) + 1;
     SimulatedErp.attempts.set(input.idempotencyKey, seen);
 
-    const lastChar = input.idempotencyKey.slice(-1).toLowerCase();
-    const failFirst = '02468ace'.includes(lastChar);
+    const failFirst = this.failFirstAttempt;
     if (failFirst && seen === 1) {
       throw new ErpFailure(
         'The ERPNext request timed out after 30 seconds (simulated). Nothing was written. This can be retried safely: the record carries an idempotency key, so a retry will not create a duplicate.',
@@ -425,9 +428,12 @@ export class LiveErp implements ErpAdapter {
 /* -------------------------------- Resolution -------------------------------- */
 
 export function resolveErp(): ErpAdapter {
-  if ((process.env.ERPNEXT_ADAPTER ?? 'simulated') !== 'live') return new SimulatedErp();
+  // The demonstration dataset asks for one recoverable failure so the retry
+  // path is exercised for real. Outside the demo this is off.
+  const failFirst = getSetting<boolean>('demo.erpFailFirst', false);
+  if ((process.env.ERPNEXT_ADAPTER ?? 'simulated') !== 'live') return new SimulatedErp(failFirst);
   const { config } = liveConfig();
-  if (!config) return new SimulatedErp();
+  if (!config) return new SimulatedErp(failFirst);
   return new LiveErp(config);
 }
 
