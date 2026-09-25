@@ -182,7 +182,7 @@ async function maybeAssist(
   const model = result.call.model;
   const merged = { ...fields };
 
-  const fill = <K extends keyof AiFillable>(key: K, value: AiFillable[K]) => {
+  const fill = <K extends keyof AiFillable>(key: K, value: AiFillable[K] | undefined) => {
     if (value === undefined || value === null) return;
     const current = merged[key as keyof typeof merged] as Extracted<unknown> | undefined;
     // Never overwrite something a deterministic parser actually read.

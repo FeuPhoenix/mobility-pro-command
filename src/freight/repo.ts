@@ -15,6 +15,7 @@ import { db, json, bool, str, tx } from './db';
 import type {
   AuditEvent,
   Company,
+  ContainerType,
   CompanyProvider,
   Comparison,
   ComparisonLine,
@@ -870,7 +871,7 @@ function rowToQuote(r: Record<string, unknown>): Quote {
     originPort: f.originPort ?? emptyExtracted<string>(),
     destinationPort: f.destinationPort ?? emptyExtracted<string>(),
     currency: f.currency ?? emptyExtracted<string>(),
-    containerBasis: f.containerBasis ?? emptyExtracted<Quote['containerBasis']['value']>(),
+    containerBasis: f.containerBasis ?? emptyExtracted<ContainerType>(),
     baseFreight: f.baseFreight ?? emptyExtracted<number>(),
     surcharges: f.surcharges ?? [],
     totalQuoted: f.totalQuoted ?? emptyExtracted<number>(),
