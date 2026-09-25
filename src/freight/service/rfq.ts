@@ -376,7 +376,9 @@ export function prepareRfqEmails(ctx: Ctx, rfqId: Id): EmailDraft[] {
       bodyText: rfqBody(input),
       attachments: [],
       contentHash: '',
-      status: 'draft',
+      // Preparing an email is a request for approval: it must appear in the
+      // manager's queue immediately rather than sitting invisibly as a draft.
+      status: 'awaiting_approval',
       approvedBy: null,
       approvedAt: null,
       approvedHash: null,
@@ -448,7 +450,7 @@ export function prepareReminders(ctx: Ctx, rfqId: Id, linkIds: Id[]): EmailDraft
       bodyText: reminderBody({ ...input, sentAt: recipient.sentAt ?? rfq.createdAt }),
       attachments: [],
       contentHash: '',
-      status: 'draft',
+      status: 'awaiting_approval',
       approvedBy: null,
       approvedAt: null,
       approvedHash: null,

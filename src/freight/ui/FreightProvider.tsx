@@ -101,7 +101,8 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
 
   const notify = useCallback((tone: Toast['tone'], message: string) => {
     const id = (toastId.current += 1);
-    setToasts((t) => [...t, { id, tone, message }]);
+    // Confirming several quotes in a row should not bury the screen in toasts.
+    setToasts((t) => [...t, { id, tone, message }].slice(-3));
     // Errors stay until dismissed; they usually need reading.
     if (tone !== 'bad') {
       window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5200);

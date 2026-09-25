@@ -30,6 +30,8 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { MPC_DATA_DIR: '.demo-data-e2e' },
+    // The freight module keeps a real database, so give the browser tests
+    // their own directory rather than sharing a developer's local data.
+    env: { MPC_DATA_DIR: '.demo-data-e2e', FREIGHT_DATA_DIR: '.freight-data-e2e' },
   },
 });

@@ -255,14 +255,24 @@ a.fr-row:focus-visible {
   border-radius: 12px;
   overflow: hidden;
 }
+/*
+ * Label and value sit side by side; the source sits underneath, spanning the
+ * full width. An earlier three-column version squashed the source into an
+ * unreadable sliver whenever the card was half the page, which defeated the
+ * point of showing provenance at all.
+ */
 .prov-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(130px, 1fr) minmax(0, 1.5fr);
-  gap: 12px;
-  padding: 10px 13px;
+  grid-template-columns: minmax(140px, 1fr) minmax(150px, 1.1fr);
+  gap: 6px 12px;
+  padding: 11px 13px;
   border-bottom: 1px solid var(--line, #e3e6ea);
   align-items: start;
   font-size: 13px;
+}
+.prov-row > .src,
+.prov-row > div:nth-child(3) {
+  grid-column: 1 / -1;
 }
 .prov-row:last-child {
   border-bottom: 0;
@@ -285,10 +295,9 @@ a.fr-row:focus-visible {
   padding: 1px 4px;
   border-radius: 4px;
 }
-@media (max-width: 720px) {
+@media (max-width: 560px) {
   .prov-row {
     grid-template-columns: 1fr;
-    gap: 4px;
   }
 }
 

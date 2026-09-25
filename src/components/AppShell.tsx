@@ -55,6 +55,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isActive = (item: (typeof NAV)[number]) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
 
+  // The freight RFQ module is a separate workspace with its own navigation and
+  // its own server-side store. It renders bare so the two shells never nest.
+  // (Every hook above still runs, so the hook order is unchanged.)
+  if (pathname.startsWith('/freight')) return <>{children}</>;
+
   return (
     <div className="shell">
       <nav className="rail" data-open={railOpen} aria-label="Main">
