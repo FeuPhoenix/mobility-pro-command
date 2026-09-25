@@ -1,0 +1,112 @@
+# Recording freight comparison outcomes in ERPNext
+
+## The problem
+
+ERPNext has no native document for "we asked five freight providers for a rate,
+here is how they compared, and here is the one we recommend". The closest
+built-in documents are:
+
+| Candidate | Why it does not fit on its own |
+| --- | --- |
+| **Request for Quotation** | Models a purchasing RFQ to *suppliers for items*. A freight lane is not an Item, and the child table expects item codes and quantities. Usable only with custom fields and a dummy item. |
+| **Supplier Quotation** | One document per provider offer. It holds a rate well, but there is nowhere to record the comparison itself, the ranking criteria, or which offer was recommended and why. |
+| **Shipment** | Post-booking. It describes a shipment that is happening, not a set of offers being evaluated. |
+| **A custom DocType** | Fits exactly, but has to be created and agreed on the client's instance. |
+
+Because of this, **the live adapter refuses to write until a destination has
+been confirmed**. It does not guess, and it does not fall back to something
+approximate. Until `ERPNEXT_DOCTYPE` is set to a DocType the adapter has
+verified exists, the UI shows the sync as *Setup required* and lists what is
+missing.
+
+## Recommended shape
+
+A custom DocType, `Freight Comparison`, with a child table `Freight Comparison
+Offer`. This is the smallest thing that holds the outcome without distorting an
+existing document.
+
+### `Freight Comparison` (parent)
+
+| Field | Type | Source in this application |
+| --- | --- | --- |
+| `freight_idempotency_key` | Data, **unique**, read-only | SHA-256 of the comparison id. The retry key. |
+| `company` | Link → Company | The company the request belongs to |
+| `rfq_reference` | Data | `RFQ-MPD-2026-0007` |
+| `route` / `origin_port` / `destination_port` | Data | The lane |
+| `incoterm` | Data | From the requirement |
+| `comparison_date` | Date | When the comparison was built |
+| `base_currency` | Link → Currency | The currency offers were compared in |
+| `offers_received` / `offers_comparable` | Int | Counts, so a reader can see how much was excluded |
+| `recommendation_status` | Select | Always `Recommended, not selected` from this application |
+| `recommended_provider` | Data (or Link → Supplier) | Name of the recommended provider |
+| `recommended_total` / `recommended_transit_days` | Currency / Int | The recommended figures |
+| `cheapest_provider` / `cheapest_total` | Data / Currency | Recorded separately, because they often differ |
+| `recommendation_reasons` | Small Text | Why it won, in plain language |
+| `recommendation_tradeoffs` | Small Text | What it costs |
+| `not_compared_notes` | Small Text | Offers left out, and what each one needs |
+| `ranking_criteria` | Code (JSON) | The exact weights used |
+| `fx_rates_applied` | Code (JSON) | Rate, source and date for every conversion |
+| *attachment* | File | The comparison workbook |
+
+### `Freight Comparison Offer` (child)
+
+`provider`, `quote_version`, `comparable`, `total_quote_currency`,
+`quote_currency`, `total_base_currency`, `transit_days`, `free_days`,
+`valid_until`, `rank`, `score`.
+
+The exact payload is built by `erpPayload()` in
+`src/freight/adapters/erpnext.ts` — one function, so the mapping is reviewable
+in one place.
+
+### Why `recommendation_status` matters
+
+ERPNext readers will reasonably assume a recorded provider is the chosen one.
+It is not. This application recommends; the team selects, negotiates and books.
+The field is written on every record so that distinction survives into the ERP.
+
+## Idempotency
+
+`freight_idempotency_key` is derived from the comparison id, so it is stable
+across retries and restarts. Before inserting, the adapter searches for an
+existing document with that key and issues a `PUT` instead of a `POST` if it
+finds one.
+
+**Add a unique index on that field in ERPNext.** The lookup-then-write is not
+atomic, so the database constraint is the real guarantee against a duplicate
+created by two simultaneous retries.
+
+## Permissions
+
+The API user needs `create` and `write` on the destination DocType and `create`
+on `File` for the attachment. It needs nothing else. Start there rather than
+with a System Manager key.
+
+## Open questions for the customer
+
+1. **Which destination?** A custom `Freight Comparison` DocType as above, or
+   should each offer become a `Supplier Quotation` with the comparison held
+   only here? The second is more "native" but loses the comparison as a record.
+2. **Are freight providers already Suppliers in ERPNext?** If so,
+   `recommended_provider` should be a Link to Supplier, and provider records in
+   this application should carry the supplier id so the two stay aligned.
+3. **Which company records is this scoped to?** The multi-company setup here
+   must map onto ERPNext Company records, and the API user's permissions must
+   match.
+4. **Should the outcome ever create anything downstream** — a draft Supplier
+   Quotation, a Purchase Order — or is it strictly a record of a decision? This
+   phase assumes strictly a record.
+5. **What ERPNext and Frappe version is installed?** The REST surface, and
+   whether `Stock Reservation Entry`-style newer doctypes exist, depends on it.
+   The adapter reads the version during its probe but cannot act on it until
+   the destination is agreed.
+
+## What has and has not been verified
+
+| | Status |
+| --- | --- |
+| Payload construction | Unit tested |
+| Idempotency key stability | Unit tested |
+| Retry after failure without duplicating | Tested against the simulated adapter, and in the browser |
+| Failure surfaced honestly in the UI | Tested |
+| Simulated result never shown as a live write | Tested |
+| **A real write to a real ERPNext instance** | **Not verified.** No instance was reachable from this environment. |

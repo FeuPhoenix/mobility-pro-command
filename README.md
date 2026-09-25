@@ -28,8 +28,13 @@ npm start          # http://localhost:4310
 Tests:
 
 ```bash
-npm test           # 79 business-logic tests (Vitest)
-npm run test:e2e   # 12 browser journey tests (Playwright, uses your installed Chrome)
+npm test           # 118 business-logic tests (Vitest)
+npm run test:e2e   # browser journey tests (Playwright, uses your installed Chrome)
+
+# Freight module only:
+npx vitest run tests/freight.test.ts        # 36 business-rule tests
+npx playwright test tests/e2e/freight.spec.ts
+node scripts/journey.mjs                    # 54 end-to-end checks over HTTP
 ```
 
 `npm run test:e2e` needs a production build first (`npm run build`); it starts its own
@@ -41,8 +46,45 @@ None is required. `.env.example` documents the optional variables:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `ERPNEXT_BASE_URL` / `ERPNEXT_API_KEY` / `ERPNEXT_API_SECRET` | unset | Reserved. **No live adapter is implemented.** Setting them does not connect anything; the UI continues to say "ERPNext demo adapter". |
-| `ANTHROPIC_API_KEY` | unset | Reserved. The assistant is deterministic and does not call a model. |
+| `ERPNEXT_BASE_URL` / `ERPNEXT_API_KEY` / `ERPNEXT_API_SECRET` | unset | For the **operations demo**, reserved: no live adapter is implemented there. The freight module does implement a live adapter; see `docs/FREIGHT_SETUP.md`. |
+| `ANTHROPIC_API_KEY` | unset | Reserved. The operations assistant is deterministic and does not call a model. |
+
+The freight module has its own configuration, all optional, documented in
+[`docs/FREIGHT_SETUP.md`](docs/FREIGHT_SETUP.md). With none of it set, the whole
+freight workflow runs locally with simulated mail and ERPNext.
+
+---
+
+## Two modules
+
+This repository now holds two workspaces, side by side and independent.
+
+### Freight RFQ — `/freight`
+
+Phase one of the freight brief: maintain freight-provider lists for several
+companies, issue shipping requirements and RFQs, collect and check quotations,
+compare them, recommend an offer, email the outcome and record it in ERPNext.
+The team keeps final selection, negotiation and booking.
+
+Unlike the operations demo below, this module keeps a **real server-side store**
+(SQLite via Node's built-in `node:sqlite`, no native build). It has to: an
+approval that does not survive a reload is not an approval, and duplicate-send
+protection a client can forget is not protection.
+
+- Setup and configuration: [`docs/FREIGHT_SETUP.md`](docs/FREIGHT_SETUP.md)
+- What works, what is simulated, and the demo walkthrough: [`docs/FREIGHT_HANDOVER.md`](docs/FREIGHT_HANDOVER.md)
+- ERPNext mapping and open questions: [`docs/FREIGHT_ERPNEXT.md`](docs/FREIGHT_ERPNEXT.md)
+
+Open `http://localhost:4310/freight` and press **Load demo data**.
+
+Email is **simulated by default**: prepared, approved and recorded exactly as in
+production, but never transmitted. ERPNext records are local and are labelled
+*"Simulated, not in ERPNext"* everywhere they appear.
+
+### Operations demo — `/`
+
+The original supplier-document and aging-stock demonstration, described below.
+It is unchanged.
 
 ---
 
