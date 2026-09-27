@@ -35,8 +35,10 @@ import { ingestMessage, reviewQuote } from '../service/inbox';
 import { createComparison, prepareComparisonEmail } from '../service/compare';
 import { queueSync, runSync } from '../service/erp';
 import { listCompanyProviders, listRfqs } from '../repo';
+import { setPassword } from '../auth';
 import {
   COMPANIES,
+  DEMO_PASSWORD,
   EXCEL_QUOTE_ROWS,
   PROVIDERS,
   REPLY_ANCHOR_AMBIGUOUS,
@@ -122,6 +124,9 @@ export async function seedDemo(): Promise<SeedResult> {
     companyIds: u.companies.map((code) => companyIds[code]),
   }));
   for (const u of users) insertUser(u);
+  // Every demonstration account gets a real, hashed password. Sign-in is not
+  // bypassed for the demo; the sign-in page just shows what to type.
+  for (const u of users) await setPassword(u.id, DEMO_PASSWORD);
 
   const manager: Ctx = { user: users[0] };
   const industrial: Ctx = { user: users[2] };

@@ -51,6 +51,10 @@ export interface User {
   role: UserRole;
   /** Company ids this user may act on. Enforced server-side on every request. */
   companyIds: Id[];
+  /** A disabled account cannot sign in, and its sessions stop working at once. */
+  disabled?: boolean;
+  /** False when the account exists but no password has been set yet. */
+  canSignIn?: boolean;
 }
 
 /* ------------------------------- Companies --------------------------------- */

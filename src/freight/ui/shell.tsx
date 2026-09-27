@@ -20,7 +20,7 @@ const NAV = [
 ];
 
 export function FreightShell({ children }: { children: React.ReactNode }) {
-  const { state, loading, error, busy, companyId, setCompanyId, switchUser, loadDemo, toasts, dismissToast } =
+  const { state, loading, error, busy, companyId, setCompanyId, signOut, loadDemo, toasts, dismissToast } =
     useFreight();
   const pathname = usePathname();
   const [confirmDemo, setConfirmDemo] = React.useState(false);
@@ -36,6 +36,11 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
 
   const isActive = (item: (typeof NAV)[number]) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
+
+  // The sign-in screen is the one page inside this route group that must render
+  // without the workspace around it - there is no signed-in person yet.
+  // (Every hook above still runs, so the hook order is unchanged.)
+  if (pathname === '/freight/login') return <>{children}</>;
 
   return (
     <div className="shell">
@@ -113,24 +118,17 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
             </label>
           ) : null}
 
-          {state && state.users.length > 0 ? (
-            <label className="row" style={{ gap: 7 }}>
-              <span className="tiny muted" style={{ whiteSpace: 'nowrap' }}>Acting as</span>
-              <select
-                className="input"
-                style={{ width: 'auto', minWidth: 210, padding: '5px 8px', fontSize: 12.5 }}
-                value={state.user?.id ?? ''}
-                onChange={(e) => void switchUser(e.target.value)}
-                disabled={busy}
-                aria-label="Acting as which person"
-              >
-                {state.users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} — {u.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {state?.user ? (
+            <div className="row" style={{ gap: 10 }}>
+              <span className="tiny muted" style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                {state.user.name}
+                <br />
+                {state.user.title}
+              </span>
+              <button className="btn sm" disabled={busy} onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </div>
           ) : null}
         </header>
 

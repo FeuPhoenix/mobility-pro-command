@@ -38,9 +38,9 @@ export interface ProviderRow {
 }
 
 export interface FreightState {
+  signedIn: boolean;
   seeded: boolean;
   user: User | null;
-  users: User[];
   companies: Company[];
   companyId: string | null;
   overview: Overview | null;
@@ -71,7 +71,7 @@ interface FreightContextValue {
   refresh: () => Promise<void>;
   /** Runs a mutation. Returns the result, or null when it failed. */
   run: <T = unknown>(action: Record<string, unknown>) => Promise<{ message: string; data: T } | null>;
-  switchUser: (userId: string) => Promise<void>;
+  signOut: () => Promise<void>;
   loadDemo: () => Promise<void>;
   toasts: Toast[];
   dismissToast: (id: number) => void;
@@ -119,6 +119,13 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
       try {
         const url = company ? `/api/freight/state?companyId=${encodeURIComponent(company)}` : '/api/freight/state';
         const res = await fetch(url, { cache: 'no-store' });
+        if (res.status === 401) {
+          // Not signed in, or the session expired underneath us.
+          if (typeof window !== 'undefined' && window.location.pathname !== '/freight/login') {
+            window.location.href = '/freight/login';
+          }
+          return;
+        }
         if (!res.ok) throw new Error(`The workspace could not be loaded (${res.status}).`);
         const data = (await res.json()) as FreightState;
         if (seq !== requestSeq.current) return;
@@ -173,6 +180,10 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(action),
         });
+        if (res.status === 401) {
+          window.location.href = '/freight/login';
+          return null;
+        }
         const payload = (await res.json()) as { ok?: boolean; message?: string; error?: string; data?: T };
         if (!res.ok || !payload.ok) {
           notify('bad', payload.error ?? 'That did not work.');
@@ -191,35 +202,15 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
     [companyId, load, notify],
   );
 
-  const switchUser = useCallback(
-    async (userId: string) => {
-      setBusy(true);
-      try {
-        const res = await fetch('/api/freight/state', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ userId }),
-        });
-        const payload = (await res.json()) as { ok?: boolean; message?: string; error?: string };
-        if (!res.ok || !payload.ok) {
-          notify('bad', payload.error ?? 'That person could not be selected.');
-          return;
-        }
-        notify('info', payload.message ?? 'Switched.');
-        // The new person may not have access to the selected company.
-        await load(null);
-        setCompanyIdRaw(null);
-        try {
-          window.localStorage.removeItem(COMPANY_KEY);
-        } catch {
-          /* ignore */
-        }
-      } finally {
-        setBusy(false);
-      }
-    },
-    [load, notify],
-  );
+  const signOut = useCallback(async () => {
+    setBusy(true);
+    try {
+      await fetch('/api/freight/auth/logout', { method: 'POST' });
+    } finally {
+      // A full navigation, so nothing from the previous session survives.
+      window.location.href = '/freight/login';
+    }
+  }, []);
 
   const loadDemo = useCallback(async () => {
     setBusy(true);
@@ -248,13 +239,13 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
       setCompanyId,
       refresh,
       run,
-      switchUser,
+      signOut,
       loadDemo,
       toasts,
       dismissToast,
       notify,
     }),
-    [state, loading, busy, error, companyId, setCompanyId, refresh, run, switchUser, loadDemo, toasts, dismissToast, notify],
+    [state, loading, busy, error, companyId, setCompanyId, refresh, run, signOut, loadDemo, toasts, dismissToast, notify],
   );
 
   return <FreightContext.Provider value={value}>{children}</FreightContext.Provider>;

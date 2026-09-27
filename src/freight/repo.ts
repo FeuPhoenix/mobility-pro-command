@@ -127,9 +127,13 @@ export function getUser(id: Id): User | null {
 export function insertUser(u: User): void {
   db()
     .prepare(
-      'INSERT INTO users (id, name, title, email, role, company_ids) VALUES (?,?,?,?,?,?)',
+      'INSERT INTO users (id, name, title, email, role, company_ids, disabled) VALUES (?,?,?,?,?,?,?)',
     )
-    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds));
+    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0);
+}
+
+export function setUserDisabled(id: Id, disabled: boolean): void {
+  db().prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, id);
 }
 
 function rowToUser(r: Record<string, unknown>): User {
@@ -140,6 +144,9 @@ function rowToUser(r: Record<string, unknown>): User {
     email: r.email as string,
     role: r.role as User['role'],
     companyIds: json<string[]>(r.company_ids, []),
+    disabled: bool(r.disabled),
+    // Never leak the hash itself; the screens only need to know if sign-in works.
+    canSignIn: Boolean(str(r.password_hash)),
   };
 }
 

@@ -12,12 +12,41 @@ import { mkdirSync } from 'node:fs';
 const SHOTS = 'test-results/screenshots';
 mkdirSync(SHOTS, { recursive: true });
 
-async function loadDemo(page: Page) {
-  await page.goto('/freight');
-  // A fresh browser context has no session, so the workspace may already hold
-  // data from an earlier test; reload the dataset either way for determinism.
-  const res = await page.request.post('/api/freight/demo');
-  expect(res.ok()).toBeTruthy();
+const DEMO_PASSWORD = 'FreightDemo2026';
+
+/**
+ * Loads the demonstration dataset and signs in as the manager.
+ *
+ * Seeding needs a manager unless nobody can sign in yet, so this signs in first
+ * when it can. Each test gets a fresh browser context, hence a fresh session.
+ */
+async function loadDemo(page: Page, as: RegExp = /Manager/i) {
+  const state = await page.request.get('/api/freight/auth/state');
+  const before = (await state.json()) as { needsSetup?: boolean; demo?: { accounts: { email: string; title: string }[] } };
+
+  if (!before.needsSetup) {
+    const existing = before.demo?.accounts ?? [];
+    const manager = existing.find((a) => /Manager/i.test(a.title)) ?? existing[0];
+    if (manager) {
+      await page.request.post('/api/freight/auth/login', {
+        data: { email: manager.email, password: DEMO_PASSWORD },
+      });
+    }
+  }
+
+  const seeded = await page.request.post('/api/freight/demo');
+  expect(seeded.ok(), `seed failed: ${seeded.status()} ${await seeded.text()}`).toBeTruthy();
+
+  // Seeding replaced every account, so sign in again as whoever this test wants.
+  const after = await page.request.get('/api/freight/auth/state');
+  const accounts = ((await after.json()) as { demo?: { accounts: { email: string; title: string; name: string }[] } })
+    .demo?.accounts ?? [];
+  const who = accounts.find((a) => as.test(a.title) || as.test(a.name)) ?? accounts[0];
+  const login = await page.request.post('/api/freight/auth/login', {
+    data: { email: who.email, password: DEMO_PASSWORD },
+  });
+  expect(login.ok()).toBeTruthy();
+
   await page.goto('/freight');
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
 }
@@ -205,14 +234,9 @@ test.describe('freight workspace', () => {
     await expect(page.locator('.toast').filter({ hasText: /Attached to the RFQ/i })).toBeVisible();
   });
 
-  test('company boundaries hold when acting as another company user', async ({ page }) => {
-    await loadDemo(page);
-    await page.goto('/freight');
+  test('company boundaries hold when signed in as another company user', async ({ page }) => {
 
-    const picker = page.getByLabel('Acting as which person');
-    const reemValue = await picker.locator('option', { hasText: 'Reem Al Suwaidi' }).first().getAttribute('value');
-    await picker.selectOption(reemValue as string);
-    await page.waitForTimeout(600);
+    await loadDemo(page, /Reem/);
     await page.goto('/freight/rfqs');
     await page.getByRole('radio', { name: 'All' }).click();
     await expect(page.getByText('RFQ-MPD-2026-0001')).toHaveCount(0);
@@ -229,5 +253,55 @@ test.describe('freight workspace', () => {
     );
     expect(overflow).toBeLessThanOrEqual(1);
     await page.screenshot({ path: `${SHOTS}/12-narrow.png`, fullPage: true });
+  });
+});
+
+test.describe('authentication', () => {
+  test('an unauthenticated visitor is sent to sign in', async ({ page }) => {
+    await page.context().clearCookies();
+    await page.goto('/freight');
+    await expect(page).toHaveURL(/\/freight\/login/);
+    await expect(page.getByRole('heading', { name: /Sign in|Create the first account/ })).toBeVisible();
+  });
+
+  test('a wrong password is refused, and the right one gets in', async ({ page }) => {
+    await loadDemo(page);
+    const accounts = await page.request.get('/api/freight/auth/state');
+    const who = ((await accounts.json()) as { demo?: { accounts: { email: string }[] } }).demo!.accounts[0];
+
+    await page.context().clearCookies();
+    await page.goto('/freight/login');
+
+    await page.getByLabel('Email address').fill(who.email);
+    await page.getByLabel('Password').fill('DefinitelyWrong1');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByText(/do not match an account/i)).toBeVisible();
+    await expect(page).toHaveURL(/\/freight\/login/);
+
+    await page.getByLabel('Password').fill('FreightDemo2026');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+  });
+
+  test('signing out ends the session', async ({ page }) => {
+    await loadDemo(page);
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await expect(page).toHaveURL(/\/freight\/login/);
+
+    // Going back must not resurrect the workspace.
+    await page.goto('/freight');
+    await expect(page).toHaveURL(/\/freight\/login/);
+  });
+
+  test('the demo accounts are offered, and fill the form', async ({ page }) => {
+    await loadDemo(page);
+    await page.context().clearCookies();
+    await page.goto('/freight/login');
+
+    await expect(page.getByRole('heading', { name: 'Demonstration accounts' })).toBeVisible();
+    await page.getByRole('button', { name: 'Use' }).first().click();
+    await expect(page.getByLabel('Email address')).not.toHaveValue('');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
   });
 });

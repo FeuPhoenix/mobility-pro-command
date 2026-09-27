@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { listCompanies, listUsers, listInbound, listRfqs } from '@/freight/repo';
+import { listCompanies, listInbound, listRfqs } from '@/freight/repo';
 import { buildOverview, integrationStatus } from '@/freight/view';
 import { listCompanyProviders } from '@/freight/repo';
-import { tryResolveCtx, USER_COOKIE } from '@/freight/session';
+import { tryResolveCtx } from '@/freight/session';
 import { getSetting } from '@/freight/db';
+import { needsFirstRunSetup } from '@/freight/auth';
 import { RELATIONSHIP_LABEL } from '@/freight/types';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +13,12 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const ctx = await tryResolveCtx();
   if (!ctx) {
-    return NextResponse.json({ seeded: false, users: [], companies: [] });
+    // Not signed in. The client redirects; it needs to know whether this is a
+    // brand-new workspace that should offer first-run setup instead.
+    return NextResponse.json(
+      { signedIn: false, needsSetup: needsFirstRunSetup(), companies: [] },
+      { status: 401 },
+    );
   }
 
   const url = new URL(request.url);
@@ -43,9 +48,9 @@ export async function GET(request: Request) {
     : [];
 
   return NextResponse.json({
+    signedIn: true,
     seeded: listRfqs(ctx).length > 0 || companies.length > 0,
     user: ctx.user,
-    users: listUsers(),
     companies,
     companyId: companyId ?? null,
     overview,
@@ -59,16 +64,4 @@ export async function GET(request: Request) {
       remindersMaxRounds: getSetting('reminders.maxRounds', 2),
     },
   });
-}
-
-/** Switches the acting person. A demonstration control, not authentication. */
-export async function POST(request: Request) {
-  const body = (await request.json().catch(() => ({}))) as { userId?: string };
-  const user = listUsers().find((u) => u.id === body.userId);
-  if (!user) {
-    return NextResponse.json({ ok: false, error: 'That person is not in this workspace.' }, { status: 400 });
-  }
-  const store = await cookies();
-  store.set(USER_COOKIE, user.id, { httpOnly: true, sameSite: 'lax', path: '/' });
-  return NextResponse.json({ ok: true, message: `Now acting as ${user.name}.`, data: user });
 }

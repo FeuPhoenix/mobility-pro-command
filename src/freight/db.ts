@@ -41,7 +41,32 @@ CREATE TABLE IF NOT EXISTS users (
   title TEXT NOT NULL,
   email TEXT NOT NULL,
   role TEXT NOT NULL,
-  company_ids TEXT NOT NULL
+  company_ids TEXT NOT NULL,
+  -- scrypt$N$r$p$salt$hash. Null means the account cannot sign in yet.
+  password_hash TEXT,
+  password_set_at TEXT,
+  disabled INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(trim(email)));
+
+-- Only the SHA-256 of the session token is stored, so a database backup does
+-- not hand over live sessions.
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start TEXT NOT NULL,
+  locked_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS companies (
@@ -259,15 +284,39 @@ export function db(): DatabaseSync {
   const file = process.env.FREIGHT_DB_FILE ?? path.join(DATA_DIR, 'freight.db');
   const handle = new DatabaseSync(file);
   handle.exec(SCHEMA);
+  migrate(handle);
   instance = handle;
   (globalThis as { __freightDb?: DatabaseSync }).__freightDb = handle;
   return handle;
+}
+
+/**
+ * Brings a database created before a schema change up to date.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does nothing for a table that already exists, so
+ * columns added later need adding explicitly. Each step checks first, so this
+ * is safe to run on every start.
+ */
+function migrate(handle: DatabaseSync): void {
+  const columns = (table: string): string[] =>
+    (handle.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+
+  const userColumns = columns('users');
+  const additions: [string, string][] = [
+    ['password_hash', 'ALTER TABLE users ADD COLUMN password_hash TEXT'],
+    ['password_set_at', 'ALTER TABLE users ADD COLUMN password_set_at TEXT'],
+    ['disabled', 'ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [column, sql] of additions) {
+    if (!userColumns.includes(column)) handle.exec(sql);
+  }
 }
 
 /** An isolated in-memory database. Used by the tests so they never touch disk. */
 export function openMemoryDb(): DatabaseSync {
   const handle = new DatabaseSync(':memory:');
   handle.exec(SCHEMA);
+  migrate(handle);
   return handle;
 }
 
@@ -334,6 +383,8 @@ export function setSetting(key: string, value: unknown): void {
 export function truncateAll(): void {
   const handle = db();
   const tables = [
+    'sessions',
+    'login_attempts',
     'audit_events',
     'erp_syncs',
     'comparisons',

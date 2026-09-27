@@ -189,26 +189,69 @@ paid usage without authorisation.
 
 ---
 
-## Access control — an honest statement
+## Access control
 
-There is **no authentication** in this phase, and the brief does not ask for
-one. The person acting is chosen from a picker in the top bar, which is a
-demonstration control, not a security boundary.
+Sign-in is required. There is no anonymous access to any freight screen or
+endpoint, and no fallback identity.
 
-What *is* built, and what matters for adding authentication later:
+### How it works
 
-- every company-scoped read and write goes through a `Ctx` carrying the acting
-  user, and calls `assertCompanyAccess` before touching anything;
-- approval is restricted to the manager role, server-side;
-- attachments are only served when the acting user can already reach the record
-  that references them, so a guessed key leaks nothing;
-- every meaningful action is written to an audit trail the UI cannot rewrite.
+- **Passwords** are hashed with scrypt from Node's own crypto (N=32768, r=8,
+  p=1), with a per-password salt. Minimum ten characters, with a letter and a
+  digit.
+- **Sessions** are rows in the database, not stateless tokens, so they can be
+  revoked. Only the SHA-256 of the session token is stored, so a database
+  backup does not hand over live sessions. A session lasts seven days, or
+  twelve hours idle, whichever comes first.
+- **A password change ends every session** for that person.
+- **Disabling an account takes effect on the next request**, not at expiry.
+- **Failed attempts are throttled**: eight within fifteen minutes locks the
+  account for fifteen minutes.
+- **Sign-in never reveals whether an address exists.** A wrong password and an
+  unknown address give the same message, and both take the same time, because
+  the unknown case still performs a full scrypt comparison.
 
-Adding real authentication means replacing exactly one function —
-`resolveCtx` in `src/freight/session.ts`. Every authorisation check already in
-place keeps working unchanged.
+### First run
 
----
+A workspace where nobody can sign in offers to create the first account, which
+becomes the Logistics Operations Manager for every existing company. Once one
+account can sign in, that route refuses — it cannot be used to add a second
+back door later.
+
+Loading the demonstration dataset is also allowed on a workspace nobody can
+sign in to, because that is the other way to bootstrap. After that it needs a
+signed-in manager, since it wipes everything.
+
+### Demonstration accounts
+
+The demo dataset creates three accounts with **real, hashed passwords** —
+sign-in is not bypassed for the demo. The sign-in page lists them, with the
+shared password, but only while the workspace is flagged as holding demo data.
+On a real workspace it lists nothing, so the endpoint cannot enumerate users.
+
+### Cookies and TLS
+
+The session cookie is `httpOnly`, `sameSite=lax`, and `Secure` **when the
+request arrived over HTTPS** — or over a proxy that set `x-forwarded-proto`.
+It is deliberately not keyed off `NODE_ENV`: `next start` sets production, a
+browser will not store a `Secure` cookie over plain HTTP, and sign-in would
+then fail silently on any internal HTTP deployment. Set
+`FREIGHT_FORCE_SECURE_COOKIES=true` to pin it on behind TLS you know is there.
+
+### What is still not built
+
+- No password reset or invitation email. An administrator sets a password
+  directly; there is no SMTP flow for it.
+- No multi-factor authentication.
+- No self-service account management screen. Accounts come from the seed or
+  from first-run setup.
+
+### Automation is separate, and deliberately so
+
+The `/api/freight/automation/*` endpoints and `/api/freight/collect` take a
+bearer token rather than a session, because a scheduler has no session. They
+run as system identities that can neither approve nor send. See
+`docs/FREIGHT_N8N.md`.
 
 ## Safety defaults
 

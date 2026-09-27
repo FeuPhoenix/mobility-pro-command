@@ -48,16 +48,39 @@ const act = (action) =>
 
 const state = () => call('/api/freight/state').then((r) => r.body);
 const detail = (id) => call('/api/freight/rfq/' + id).then((r) => r.body);
-const become = (userId) =>
-  call('/api/freight/state', {
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'FreightDemo2026';
+
+/** Signs in as someone. Every account in the demo dataset shares one password. */
+const become = (email, password = DEMO_PASSWORD) =>
+  call('/api/freight/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify({ email, password }),
   });
+
+const signOut = () => call('/api/freight/auth/logout', { method: 'POST' });
+
+/** The demo accounts, read from the sign-in page's own endpoint. */
+const demoAccounts = async () => {
+  const res = await call('/api/freight/auth/state');
+  return res.body?.demo?.accounts ?? [];
+};
 
 const short = (v) => JSON.stringify(v).slice(0, 170);
 
 console.log('\n== Seeding ==');
+// Wiping the workspace needs a manager, except on a brand-new one where nobody
+// can sign in yet. Handle both, so this script works on a fresh checkout and on
+// a workspace that has already been seeded.
+const before = await call('/api/freight/auth/state');
+if (!before.body?.needsSetup) {
+  const accounts0 = before.body?.demo?.accounts ?? [];
+  const manager0 = accounts0.find((a) => /Manager/i.test(a.title)) ?? accounts0[0];
+  if (manager0) {
+    const pre = await become(manager0.email);
+    ok('signing in before reseeding works', pre.body?.ok === true, short(pre.body));
+  }
+}
 const seed = await call('/api/freight/demo', { method: 'POST' });
 ok('demo dataset loads', seed.body.ok === true, short(seed.body));
 
@@ -198,8 +221,11 @@ const again = await act({ type: 'erp.sync', comparisonId: cmp.id });
 ok('recording a second time is prevented', again.body?.data?.attempts === 2, short(again.body));
 
 console.log('\n== Company isolation ==');
-const reem = s.users.find((u) => u.name.startsWith('Reem'));
-await become(reem.id);
+const accounts = await demoAccounts();
+const reem = accounts.find((u) => u.name.startsWith('Reem'));
+ok('the demo accounts are listed for sign-in', Boolean(reem), JSON.stringify(accounts).slice(0, 120));
+const reemSignIn = await become(reem.email);
+ok('signing in as another company user works', reemSignIn.body?.ok === true, short(reemSignIn.body));
 const asReem = await state();
 ok(
   'the second company user sees only their company',
@@ -213,8 +239,8 @@ const crossWrite = await act({ type: 'rfq.close', rfqId: rfq1.id });
 ok('writing to another company request is refused', crossWrite.status === 403, String(crossWrite.status));
 
 console.log('\n== Role enforcement ==');
-const karim = asReem.users.find((u) => u.name.startsWith('Karim'));
-await become(karim.id);
+const karim = accounts.find((u) => u.name.startsWith('Karim'));
+await become(karim.email);
 const asKarim = await state();
 const pending = asKarim.overview.approvals.find((a) => a.status !== 'sent');
 if (pending) {
@@ -229,18 +255,47 @@ if (pending) {
 console.log('\n== Mailbox collection ==');
 // Back to the manager: collection is started by a person but runs as the Mailbox Collector.
 const managerUser = seed.body.data.user;
-await become(managerUser.id);
+await become(managerUser.email);
 const collectRun = await act({ type: 'mailbox.collect' });
 ok('a person can ask for a collection run', collectRun.body.ok === true, short(collectRun.body));
 ok('the simulated mailbox says so rather than claiming a real read', /simulated mailbox/i.test(collectRun.body.message ?? ''), collectRun.body.message);
 const afterCollect = await state();
 ok('the incoming mailbox is reported and not described as connected', afterCollect.integrations?.mailbox?.connected === false, short(afterCollect.integrations?.mailbox));
 ok('the last run is recorded with who asked for it', afterCollect.integrations?.collection?.lastRun?.requestedBy === managerUser.name, short(afterCollect.integrations?.collection?.lastRun));
-ok('the Mailbox Collector is not a person anyone can act as', !afterCollect.users.some((u) => u.role === 'system_mailbox_collector'));
-const actAsCollector = await become('system_mailbox_collector');
-ok('switching to the Mailbox Collector is refused', actAsCollector.status === 400, String(actAsCollector.status));
+const collectorAccounts = await demoAccounts();
+ok(
+  'the Mailbox Collector is not an account anyone can sign in as',
+  !collectorAccounts.some((u) => /collector/i.test(u.name)),
+  JSON.stringify(collectorAccounts.map((u) => u.name)),
+);
 const external = await call('/api/freight/collect', { method: 'POST', headers: { authorization: 'Bearer guess' } });
 ok('the external trigger is not open to an unauthenticated caller', external.status === 401 || external.status === 404, String(external.status));
+
+console.log('');
+console.log('== Authentication ==');
+await signOut();
+const afterSignOut = await call('/api/freight/state');
+ok('signing out ends the session', afterSignOut.status === 401, String(afterSignOut.status));
+const blockedRead = await call('/api/freight/rfq/' + rfq1.id);
+ok('a signed-out request cannot read an RFQ', blockedRead.status === 401, String(blockedRead.status));
+const blockedWrite = await act({ type: 'rfq.close', rfqId: rfq1.id });
+ok('a signed-out request cannot act', blockedWrite.status === 401, String(blockedWrite.status));
+const blockedSeed = await call('/api/freight/demo', { method: 'POST' });
+ok('a signed-out request cannot wipe the workspace', blockedSeed.status === 401, String(blockedSeed.status));
+
+const wrongPassword = await become(managerUser.email, 'NotThePassword1');
+ok('a wrong password is refused', wrongPassword.status === 401, String(wrongPassword.status));
+const unknownUser = await become('nobody@nowhere.test');
+ok('an unknown address is refused', unknownUser.status === 401, String(unknownUser.status));
+ok(
+  'both failures give the same message, so accounts cannot be enumerated',
+  wrongPassword.body?.error === unknownUser.body?.error,
+  wrongPassword.body?.error + ' vs ' + unknownUser.body?.error,
+);
+
+const backIn = await become(managerUser.email);
+ok('signing back in works', backIn.body?.ok === true, short(backIn.body));
+ok('and the workspace loads again', (await call('/api/freight/state')).status === 200);
 
 console.log(`\n==================  ${pass} passed, ${fail} failed  ==================\n`);
 process.exit(fail === 0 ? 0 : 1);

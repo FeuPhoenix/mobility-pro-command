@@ -43,6 +43,7 @@ this module selects, negotiates or books.
 | Completion email to the manager | Summary, recommendation, caveats, workbook attached |
 | ERPNext recording | Idempotent, retryable, with visible pending / success / failed / setup-required states |
 | Audit trail | Every action, approval, send, correction and sync attempt |
+| Authentication | Sign-in required; scrypt passwords, revocable database sessions, throttled attempts, first-run setup. See `docs/FREIGHT_SETUP.md` |
 | Scheduled automation seam | Seven token-protected endpoints and five n8n workflows, **verified end to end against a real n8n 2.40.7 instance**. Chasing policy now actually drives reminders. See `docs/FREIGHT_N8N.md` |
 | Company isolation | Enforced server-side on every read and write |
 | Demonstration dataset | Built by running the real workflow, not by inserting finished rows |
@@ -70,7 +71,8 @@ exercised from this environment, and none is claimed as working.
 
 ### Not built in this phase
 
-- Authentication. See the honest statement in `FREIGHT_SETUP.md`.
+- Password reset, invitations and multi-factor authentication. Sign-in itself
+  is built; these are the pieces around it.
 - Everything explicitly out of scope: shipment tracking, vessel positions,
   arrival prediction, provider discovery, WhatsApp/WeChat, negotiation,
   booking, a data warehouse.
@@ -241,7 +243,7 @@ each default is the smallest reversible choice.
 | **Are providers already Suppliers in ERPNext?** | Provider records are independent | If yes, they should carry the supplier id so the two stay aligned |
 | **Ranking criteria** | Cost 60%, transit 25%, free days 15%, adjustable per comparison | Confirm with the manager; the defaults are a starting point, not a recommendation |
 | **Currency policy** | Offers in another currency are flagged unless a rate with a source and date is recorded | Confirm whether a daily rate feed should be pulled, and from where |
-| **Who may approve?** | Only the Logistics Operations Manager role | Needs the real list of people and roles, and authentication |
+| **Who may approve?** | Only the Logistics Operations Manager role | Authentication is now built; this needs the real list of people, their roles and which companies each covers |
 
 ---
 
