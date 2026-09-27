@@ -224,10 +224,16 @@ describe('exported n8n workflow files', () => {
   const dir = path.resolve(process.cwd(), 'public/n8n');
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
 
-  it('ships one export per defined workflow', () => {
-    expect(files).toHaveLength(N8N_WORKFLOWS.length);
+  // The freight RFQ module ships its own family of exports, generated and
+  // validated by scripts/build-freight-workflows.mjs. They are not part of the
+  // operations catalogue, so they are excluded here - but the structural
+  // invariants below still apply to every file in the directory.
+  const operationsFiles = files.filter((f) => !f.startsWith('freight-'));
+
+  it('ships one export per defined operations workflow', () => {
+    expect(operationsFiles).toHaveLength(N8N_WORKFLOWS.length);
     for (const a of N8N_WORKFLOWS) {
-      expect(files).toContain(a.workflowFile);
+      expect(operationsFiles).toContain(a.workflowFile);
     }
   });
 

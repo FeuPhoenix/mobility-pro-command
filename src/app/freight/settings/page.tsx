@@ -37,6 +37,7 @@ export default function SettingsPage() {
         </div>
         <div className="stack">
           <IntegrationsCard />
+          <AutomationCard />
         </div>
       </div>
     </div>
@@ -355,5 +356,77 @@ function CollectionStatus() {
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The automation seam, shown rather than buried in a document.
+ *
+ * A reader should be able to see at a glance that nothing a workflow can call
+ * is able to send an email or approve one.
+ */
+function AutomationCard() {
+  const { state } = useFreight();
+  const automation = state?.integrations?.automation;
+  if (!automation) return null;
+
+  return (
+    <Card>
+      <CardHead
+        title="Scheduled automation"
+        hint="What n8n or a cron job may reach. Workflows do the timing and the notifying; this application keeps the rules."
+        right={
+          <Pill tone={automation.enabled ? 'good' : 'neutral'}>
+            {automation.enabled ? 'Enabled' : 'Switched off'}
+          </Pill>
+        }
+      />
+      <div className="card-body stack">
+        {!automation.enabled ? (
+          <Notice tone="info" title="These endpoints are switched off. ">
+            Set <code>FREIGHT_AUTOMATION_TOKEN</code> to enable them. With no token set they return
+            404 rather than being left open.
+          </Notice>
+        ) : (
+          <Notice tone="good" title="Enabled. ">
+            A workflow presenting the bearer token can call the endpoints below.
+          </Notice>
+        )}
+
+        <div className="table-wrap">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <caption className="sr-only">Endpoints available to scheduled automation</caption>
+            <thead>
+              <tr>
+                <th scope="col" style={{ textAlign: 'left', padding: '6px 8px' }}>Call</th>
+                <th scope="col" style={{ textAlign: 'left', padding: '6px 8px' }}>What it does</th>
+              </tr>
+            </thead>
+            <tbody>
+              {automation.endpoints.map((e) => (
+                <tr key={`${e.method} ${e.path}`} style={{ borderTop: '1px solid var(--line, #e3e6ea)' }}>
+                  <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                    <code style={{ fontSize: 11 }}>
+                      {e.method} {e.path}
+                    </code>
+                  </td>
+                  <td style={{ padding: '6px 8px' }}>
+                    {e.purpose}{' '}
+                    <span className="muted">{e.writes ? '(prepares work)' : '(read-only)'}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <Notice tone="warn" title="What automation can never do. ">
+          Send an email to a provider, or approve one. A scheduled run may prepare a draft reminder
+          and retry a failed ERPNext record; every outgoing email still waits for a person who can
+          see the recipients and the body. Five importable workflows are in{' '}
+          <code>public/n8n/</code>.
+        </Notice>
+      </div>
+    </Card>
   );
 }

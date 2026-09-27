@@ -35,7 +35,13 @@ export type UserRole =
    * into the workspace on a schedule. It is never stored as a user row, so it
    * cannot be picked as the acting person, and it may not edit, approve or send.
    */
-  | 'system_mailbox_collector';
+  | 'system_mailbox_collector'
+  /**
+   * Not a person. Scheduled automation (n8n, cron) preparing work for a human:
+   * it may draft a reminder and retry a failed ERPNext record, and nothing else.
+   * It can never approve an email and can never send one.
+   */
+  | 'system_automation';
 
 export interface User {
   id: Id;

@@ -49,6 +49,28 @@ import { erpStatusForDisplay } from './adapters/erpnext';
 import { aiStatusForDisplay } from './adapters/ai';
 import { getSetting } from './db';
 
+/**
+ * Everything a workflow may call, shown in Settings so the seam is visible
+ * rather than buried in documentation. Nothing here sends or approves.
+ */
+export interface AutomationEndpoint {
+  method: 'GET' | 'POST';
+  path: string;
+  purpose: string;
+  /** False for a pure read. True never means "may send an email". */
+  writes: boolean;
+}
+
+export const AUTOMATION_ENDPOINTS: readonly AutomationEndpoint[] = [
+  { method: 'POST', path: '/api/freight/collect', purpose: 'Collect replies from the shared mailbox.', writes: true },
+  { method: 'GET', path: '/api/freight/automation/summary', purpose: 'One-call summary for a briefing.', writes: false },
+  { method: 'GET', path: '/api/freight/automation/approvals', purpose: 'What is waiting for the manager to approve.', writes: false },
+  { method: 'GET', path: '/api/freight/automation/reminders', purpose: 'Which providers are due a chase, and why.', writes: false },
+  { method: 'POST', path: '/api/freight/automation/reminders', purpose: 'Prepare draft reminders. They still need approval.', writes: true },
+  { method: 'GET', path: '/api/freight/automation/erpnext', purpose: 'Records that have not reached ERPNext.', writes: false },
+  { method: 'POST', path: '/api/freight/automation/erpnext', purpose: 'Retry the records that can safely be retried.', writes: true },
+];
+
 export interface ApprovalItem {
   emailId: Id;
   rfqId: Id;
@@ -400,6 +422,12 @@ export interface IntegrationStatus {
   };
   erp: ReturnType<typeof erpStatusForDisplay>;
   ai: ReturnType<typeof aiStatusForDisplay>;
+  /** The surface scheduled automation (n8n, cron) may reach. */
+  automation: {
+    enabled: boolean;
+    /** Paths a workflow may call, with what each one is allowed to do. */
+    endpoints: readonly AutomationEndpoint[];
+  };
   demoMode: boolean;
 }
 
@@ -414,6 +442,10 @@ export function integrationStatus(): IntegrationStatus {
     },
     erp: erpStatusForDisplay(),
     ai: aiStatusForDisplay(),
+    automation: {
+      enabled: Boolean(process.env.FREIGHT_AUTOMATION_TOKEN),
+      endpoints: AUTOMATION_ENDPOINTS,
+    },
     demoMode: getSetting<boolean>('demo.mode', false),
   };
 }

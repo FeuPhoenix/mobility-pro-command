@@ -93,6 +93,22 @@ export function assertCanEdit(ctx: Ctx): void {
   }
 }
 
+/**
+ * Sending is a person's act.
+ *
+ * `assertSendable` already refuses anything unapproved, and no system identity
+ * can approve, so automation cannot reach a send that way. This is the second
+ * lock: even a *already approved* email cannot be pushed out by a scheduler.
+ * Someone decided to approve it; someone decides to send it.
+ */
+export function assertCanSend(ctx: Ctx): void {
+  if (ctx.user.role === 'system_mailbox_collector' || ctx.user.role === 'system_automation') {
+    throw forbidden(
+      'Automation can prepare an email but never send one. A person has to approve it and send it.',
+    );
+  }
+}
+
 /* --------------------------------- Users ----------------------------------- */
 
 export function listUsers(): User[] {

@@ -43,6 +43,7 @@ this module selects, negotiates or books.
 | Completion email to the manager | Summary, recommendation, caveats, workbook attached |
 | ERPNext recording | Idempotent, retryable, with visible pending / success / failed / setup-required states |
 | Audit trail | Every action, approval, send, correction and sync attempt |
+| Scheduled automation seam | Seven token-protected endpoints and five importable n8n workflows. Chasing policy now actually drives reminders. See `docs/FREIGHT_N8N.md` |
 | Company isolation | Enforced server-side on every read and write |
 | Demonstration dataset | Built by running the real workflow, not by inserting finished rows |
 
