@@ -823,18 +823,20 @@ function RecordTab({ detail, onChanged }: { detail: Detail; onChanged: () => voi
   const { comparison, sync } = detail;
   const erp = state?.integrations?.erp;
 
-  if (!comparison) {
-    return (
-      <Card>
-        <div className="card-body">
-          <Empty title="Nothing to record yet">Build the comparison first.</Empty>
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <div className="stack">
+      <QuotationRecords detail={detail} onChanged={onChanged} />
+
+      {!comparison ? (
+        <Card>
+          <div className="card-body">
+            <Empty title="No comparison to record yet">
+              The quotations above can be recorded on their own. Build the comparison when you want its
+              outcome recorded too.
+            </Empty>
+          </div>
+        </Card>
+      ) : (
       <Card>
         <CardHead
           title="ERPNext record"
@@ -898,7 +900,92 @@ function RecordTab({ detail, onChanged }: { detail: Detail; onChanged: () => voi
           </p>
         </div>
       </Card>
+      )}
     </div>
+  );
+}
+
+/**
+ * The raw quotations in ERPNext — the destination the customer chose.
+ *
+ * A quotation nobody has checked is never written, so the reason is shown in
+ * place of the record rather than the row simply being absent.
+ */
+function QuotationRecords({ detail, onChanged }: { detail: Detail; onChanged: () => void }) {
+  const { run, busy, state } = useFreight();
+  const erp = state?.integrations?.erp;
+  const rows = detail.quoteSyncs;
+  const sendable = rows.filter((r) => !r.blockedReason && r.sync?.status !== 'success');
+
+  return (
+    <Card>
+      <CardHead
+        title="Quotations in ERPNext"
+        hint="One record per quotation version. A revision is recorded separately; it never overwrites the offer it replaced."
+      />
+      <div className="card-body stack">
+        {erp && !erp.connected ? (
+          <Notice tone="warn" title={`${erp.label}. `}>
+            {erp.detail}
+          </Notice>
+        ) : null}
+
+        {rows.length === 0 ? (
+          <Empty title="No quotations yet">Nothing has arrived for this request.</Empty>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ textAlign: 'left' }}>
+                <th style={{ padding: '6px 8px 6px 0' }}>Provider</th>
+                <th style={{ padding: '6px 8px' }}>Version</th>
+                <th style={{ padding: '6px 8px' }}>Record</th>
+                <th style={{ padding: '6px 0 6px 8px' }}>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.quoteId} style={{ borderTop: '1px solid var(--line, #e3e6ea)' }}>
+                  <td style={{ padding: '8px 8px 8px 0' }}>{r.providerName}</td>
+                  <td style={{ padding: '8px' }}>v{r.version}</td>
+                  <td style={{ padding: '8px' }}>
+                    {r.sync?.status === 'success' ? (
+                      <>
+                        {r.sync.doctype ?? 'recorded'} {r.sync.remoteName ?? ''}
+                      </>
+                    ) : (
+                      <span className="muted">not recorded</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '8px 0 8px 8px' }}>
+                    {r.sync ? (
+                      <SyncStatusPill status={r.sync.status} simulated={r.sync.adapter === 'simulated'} />
+                    ) : null}
+                    {r.blockedReason ? <div className="muted">{r.blockedReason}</div> : null}
+                    {r.sync?.lastError ? (
+                      <div className="muted">
+                        Attempt {r.sync.attempts} did not succeed: {r.sync.lastError}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {sendable.length > 0 ? (
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+            <ConfirmButton
+              className="btn"
+              label={`Record ${sendable.length} quotation${sendable.length === 1 ? '' : 's'}`}
+              confirmLabel={erp?.connected ? 'Confirm - write to ERPNext' : 'Confirm (recorded locally)'}
+              disabled={busy}
+              onConfirm={() => run({ type: 'erp.syncQuotations', rfqId: detail.rfq.id }).then(onChanged)}
+            />
+          </div>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 

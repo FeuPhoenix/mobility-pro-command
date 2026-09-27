@@ -21,6 +21,7 @@ import {
   syncRfqQuotations,
 } from '@/freight/service/erpQuotations';
 import { SimulatedErp } from '@/freight/adapters/erpnext';
+import { buildRfqDetail } from '@/freight/view';
 import type { Rfq, User } from '@/freight/types';
 
 let manager: Ctx;
@@ -262,5 +263,25 @@ describe('company isolation', () => {
     };
     expect(listQuoteSyncs(outsider)).toHaveLength(0);
     expect(listQuoteSyncs(manager)).toHaveLength(1);
+  });
+});
+
+describe('the record screen', () => {
+  it('shows a row per quotation, with the reason one cannot be written', async () => {
+    const rfq = await rfqWithQuote();
+    const before = buildRfqDetail(manager, rfq).quoteSyncs;
+    expect(before).toHaveLength(1);
+    expect(before[0].providerName).toBe('Alpha Lines');
+    expect(before[0].sync).toBeNull();
+    // Absence has to be explained, not left as a silent gap.
+    expect(before[0].blockedReason).toMatch(/have not been checked/i);
+
+    const quote = listQuotes(manager, rfq.id)[0];
+    reviewQuote(manager, quote.id, { fields: [], confirm: true });
+    await syncQuotation(manager, quote.id);
+
+    const after = buildRfqDetail(manager, rfq).quoteSyncs;
+    expect(after[0].blockedReason).toBeNull();
+    expect(after[0].sync?.status).toBe('success');
   });
 });

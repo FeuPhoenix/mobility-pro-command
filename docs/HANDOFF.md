@@ -129,8 +129,11 @@ Our side is written: `src/freight/service/erpQuotations.ts` walks the confirmed
 quotations of a request and writes one record per quotation *version*, keyed by
 a hash of the quote id so a retry updates rather than duplicating. Actions
 `erp.syncQuotations` and `erp.syncQuotation`; state in `erp_quote_syncs`.
-Covered by `tests/erpnext-quotation-sync.test.ts`. What is left on this item is
-theirs: create the DocType, then run it once against a real instance.
+Covered by `tests/erpnext-quotation-sync.test.ts`. The RFQ **Record** tab lists
+one row per quotation version with its record, and states in words why a
+quotation cannot be written rather than leaving the row silently empty. What is
+left on this item is theirs: create the DocType, then run it once against a real
+instance.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 

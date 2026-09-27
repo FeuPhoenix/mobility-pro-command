@@ -38,6 +38,7 @@ import {
   getSyncByComparison,
   type Ctx,
 } from './repo';
+import { quoteSyncFor, quotationBlockedReason, type QuoteSync } from './service/erpQuotations';
 import { approvalIsCurrent } from './domain/email';
 import { uncertainFields } from './domain/extraction';
 import { mailStatusForDisplay } from './adapters/mail';
@@ -334,6 +335,20 @@ export interface QuoteView {
   message: InboundMessage | null;
 }
 
+/**
+ * One line per quotation on the Record tab.
+ *
+ * `blockedReason` carries the words for a quotation that cannot be written, so
+ * the screen explains a missing record rather than leaving a silent gap.
+ */
+export interface QuoteSyncView {
+  quoteId: Id;
+  providerName: string;
+  version: number;
+  blockedReason: string | null;
+  sync: QuoteSync | null;
+}
+
 export interface RfqDetail {
   rfq: Rfq;
   companyName: string;
@@ -342,6 +357,7 @@ export interface RfqDetail {
   emails: EmailDraft[];
   comparison: Comparison | null;
   sync: ErpSync | null;
+  quoteSyncs: QuoteSyncView[];
   timeline: { at: string; summary: string; actor: string; action: string }[];
 }
 
@@ -387,6 +403,18 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
       message: q.sourceMessageId ? (inbound.find((m) => m.id === q.sourceMessageId) ?? null) : null,
     }));
 
+  // Every version, including superseded ones: a record already written for an
+  // offer later revised still exists, and should still be visible.
+  const quoteSyncs: QuoteSyncView[] = allQuotes
+    .map((q) => ({
+      quoteId: q.id,
+      providerName: providerNameSafe(ctx, q.companyProviderId),
+      version: q.version,
+      blockedReason: quotationBlockedReason(q),
+      sync: quoteSyncFor(q.id),
+    }))
+    .sort((a, b) => a.providerName.localeCompare(b.providerName) || a.version - b.version);
+
   const comparison = latestComparison(ctx, rfq.id);
   const sync = comparison ? getSyncByComparison(comparison.id) : null;
 
@@ -405,6 +433,7 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
     emails,
     comparison,
     sync,
+    quoteSyncs,
     timeline,
   };
 }
