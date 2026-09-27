@@ -25,3 +25,7 @@ data/
 # Workflow exports regenerated with literal URLs for a specific n8n instance.
 # The committed exports under public/n8n/ are the source of truth.
 scripts/.n8n-workflows/
+
+# Runtime logs from a locally started server
+app.log
+*.log
