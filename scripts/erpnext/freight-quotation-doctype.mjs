@@ -38,6 +38,17 @@ export function childDoctype({ module }) {
       { fieldname: 'charge_code', label: 'Code', fieldtype: 'Data', in_list_view: 1, reqd: 1 },
       { fieldname: 'charge_label', label: 'Charge', fieldtype: 'Data', in_list_view: 1 },
       {
+        // A Float in Frappe is NOT NULL with a default of 0, so an unpriced
+        // charge cannot be stored as empty. This says which zeroes are real.
+        fieldname: 'amount_missing',
+        label: 'Amount not stated',
+        fieldtype: 'Check',
+        in_list_view: 1,
+        read_only: 1,
+        description:
+          'Set when the provider named this charge without pricing it. The amount is then 0 only because Frappe cannot store an empty number - treat it as unknown, never as free.',
+      },
+      {
         fieldname: 'amount',
         label: 'Amount',
         fieldtype: 'Float',
@@ -70,12 +81,24 @@ export function parentDoctype({ module, supplierLink }) {
     name: PARENT,
     module,
     custom: 1,
-    naming_rule: 'Expression (old style)',
-    autoname: 'format:FQ-{rfq_reference}-{provider_name}-v{quotation_version}',
+    // Named from a slug that ends in part of the integration key. A name built
+    // from RFQ, provider and version alone collides whenever two different
+    // quotations share that triple, and the collision surfaces as a duplicate
+    // whose record cannot be found - a write that then fails forever.
+    naming_rule: 'By fieldname',
+    autoname: 'field:record_slug',
     title_field: 'provider_name',
     track_changes: 1,
     fields: [
       // --- identity -------------------------------------------------------
+      {
+        fieldname: 'record_slug',
+        label: 'Record name',
+        fieldtype: 'Data',
+        unique: 1,
+        read_only: 1,
+        description: 'Readable name ending in part of the integration key, so two quotations cannot collide.',
+      },
       {
         fieldname: 'freight_idempotency_key',
         label: 'Integration key',
@@ -155,6 +178,16 @@ export function parentDoctype({ module, supplierLink }) {
       },
       { fieldname: 'source_attachment', label: 'Source file', fieldtype: 'Data', read_only: 1 },
       { fieldname: 'extractor', label: 'Extractor', fieldtype: 'Data', read_only: 1 },
+      {
+        // Frappe stores an unstated number as 0. This names which of them were
+        // never quoted, so a report can exclude them without parsing JSON.
+        fieldname: 'unstated_numbers',
+        label: 'Numbers the provider did not state',
+        fieldtype: 'Small Text',
+        read_only: 1,
+        description:
+          'Comma separated field names that are 0 only because the provider never stated them. Treat each as unknown, not as zero.',
+      },
       {
         fieldname: 'field_confidence',
         label: 'Field confidence',

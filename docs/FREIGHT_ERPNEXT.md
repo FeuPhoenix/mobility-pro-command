@@ -36,11 +36,21 @@ it can be compared. Unreviewed machine output is never sent, so their reports
 are not built on numbers nobody has verified. `quotationBlockedReason()` is the
 single place that decides, and it gives the reason in words.
 
-**A missing charge stays missing.** It is written as `null`, never `0`. A
-provider naming a surcharge without pricing it is ordinary; zeroing it makes
-their offer look like the cheapest when it is not. The `amount` field is
-deliberately not required and has no default — **please keep it that way**, and
-make sure reports treat empty as unknown rather than nil.
+**A missing charge stays distinguishable from zero.** We send `null` — but
+**Frappe stores it as `0`**: a Float column is `NOT NULL` with a default of 0,
+and no DocType setting changes that. Verified against ERPNext 15.121.4.
+
+So two columns carry the difference instead, and **your reports must use them**:
+
+| Column | Meaning |
+| --- | --- |
+| `amount_missing` on a charge row | 1 when the provider named the charge without pricing it. The `amount` is then 0 only because Frappe cannot store an empty number. |
+| `unstated_numbers` on the quotation | Comma-separated names of the numeric fields the provider never stated (`base_freight`, `total_quoted_by_provider`, `transit_days`, `free_days_destination`). |
+
+A provider naming a surcharge without pricing it is ordinary; treating that 0 as
+real makes their offer look like the cheapest when it is not. `amount` is still
+deliberately not required and has no default — **please keep it that way** — but
+the flag, not the number, is what tells you it was never quoted.
 
 **Each revision is its own record**, carrying `quotation_version` and
 `supersedes_quotation`. Aggregating across versions without filtering will
@@ -77,8 +87,9 @@ per_tonne / unknown), `confidence`, `source_reference`.
 
 - Filter to `quotation_status = 'confirmed'` and exclude rows that appear in
   another row's `supersedes_quotation`.
-- Treat an empty `amount` as unknown, not zero. A total built by summing
-  charges is only meaningful when none of them is empty.
+- **Treat `amount_missing = 1` as unknown, never as zero.** A total built by
+  summing charges is only meaningful when none of the rows is flagged, and the
+  same goes for any field named in `unstated_numbers`.
 - `field_confidence` says which figures a person verified. Anything below
   `high` deserves a look before it drives a decision.
 

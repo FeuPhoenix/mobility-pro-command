@@ -34,7 +34,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 321 unit tests
+npm test                 # 332 unit tests, 6 skipped without a live ERPNext
 npm run test:e2e         # 23 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 64 checks in demo mode, 12 in the signed-in modes
 ```
@@ -70,8 +70,10 @@ test.**
    endpoint needs a session. The token-protected automation endpoints are the
    deliberate exception, and run as system identities. `AUTH_MODE=demo` is the
    picker and is a demonstration control only.
-9. **Only checked quotations reach ERPNext**, a missing charge is written as
-   null and never zero, and each revision is its own record.
+9. **Only checked quotations reach ERPNext**, and each revision is its own
+   record. A missing charge is sent as null — but Frappe stores a Float as 0
+   regardless, so `amount_missing` and `unstated_numbers` carry the difference.
+   Their reports must read those, and `docs/FREIGHT_ERPNEXT.md` says so.
 
 ---
 
@@ -136,10 +138,24 @@ quotation cannot be written rather than leaving the row silently empty. What is
 left on this item is theirs: create the DocType, then run it once against a real
 instance.
 
-The live ERPNext path now has a contract test: `tests/erpnext-live-quotation.test.ts`
-drives the real adapter over real HTTP against a small server that behaves like
-Frappe, including the unique index. It proves our side speaks the protocol it
-thinks it does; only a write against their instance proves the rest.
+**This has now been run against a real ERPNext** (15.121.4, in a throwaway
+container). `tests/erpnext-instance.test.ts` is that check, skipped unless
+`ERPNEXT_LIVE_URL`/`_KEY`/`_SECRET` point at a **test** instance. Run it against
+theirs once the DocType exists; it is the fastest way to know the integration
+holds.
+
+Three things only the real instance found, all now fixed:
+
+- **Frappe cannot store an empty number.** Our carefully sent `null` became
+  `0.00`. Hence `amount_missing` and `unstated_numbers`.
+- **A document name built from RFQ, provider and version collides**, and the
+  collision surfaces as a duplicate whose record cannot be found by key — a
+  write that then fails on every retry. Names now end in a hash of the key.
+- **The module must exist first.** Stock ERPNext has no `Freight` module, and
+  Frappe's error is a bare `LinkValidationError`. The script creates it.
+
+`tests/erpnext-live-quotation.test.ts` remains the offline contract test against
+a Frappe-shaped server, for when no instance is at hand.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 

@@ -20,6 +20,14 @@
       "in_list_view": 1
     },
     {
+      "fieldname": "amount_missing",
+      "label": "Amount not stated",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "read_only": 1,
+      "description": "Set when the provider named this charge without pricing it. The amount is then 0 only because Frappe cannot store an empty number - treat it as unknown, never as free."
+    },
+    {
       "fieldname": "amount",
       "label": "Amount",
       "fieldtype": "Float",

@@ -112,6 +112,31 @@ describe('a missing charge is never zero', () => {
     expect((payload.charges as Record<string, unknown>[])[0].amount).toBe(185);
   });
 
+  it('flags an unpriced charge, because Frappe cannot store an empty number', () => {
+    // Against a real ERPNext the null lands as 0.00: a Float column is NOT NULL
+    // with a default of 0. The flag is what keeps "not stated" from reading as
+    // "free" in their analytics.
+    const payload = quotationPayload(input(quote({ surcharges: [surcharge({})] })));
+    const charges = payload.charges as Record<string, unknown>[];
+    expect(charges[0].amount_missing).toBe(1);
+  });
+
+  it('does not flag a charge that was priced', () => {
+    const payload = quotationPayload(
+      input(quote({ surcharges: [surcharge({ code: 'BAF', amount: 185, currency: 'USD', confidence: 'high' })] })),
+    );
+    expect((payload.charges as Record<string, unknown>[])[0].amount_missing).toBe(0);
+  });
+
+  it('names the numbers the provider never stated', () => {
+    const payload = quotationPayload(input(quote({ baseFreight: field(null), transitDays: field(null) })));
+    expect(payload.unstated_numbers).toBe('base_freight, transit_days');
+  });
+
+  it('names nothing when everything was stated', () => {
+    expect(quotationPayload(input(quote({ totalQuoted: field(9000) }))).unstated_numbers).toBeNull();
+  });
+
   it('writes null, not zero, for a field the provider never stated', () => {
     const payload = quotationPayload(input(quote({ baseFreight: field(null), transitDays: field(null) })));
     expect(payload.base_freight).toBeNull();
@@ -205,5 +230,39 @@ describe('the definitions handed to their team', () => {
     expect(emitted('freight_quotation_charge')).toEqual(
       JSON.parse(JSON.stringify(childDoctype({ module: 'Freight' }))),
     );
+  });
+});
+
+describe('the document name cannot collide', () => {
+  // Found against a real instance: a name built from RFQ, provider and version
+  // alone collides when two different quotations share them, and ERPNext then
+  // reports a duplicate whose record cannot be found by key - a write that
+  // fails on every retry.
+  it('stays readable, and ends in a hash of the integration key', () => {
+    const payload = quotationPayload(input(quote()));
+    expect(payload.record_slug).toMatch(/^FQ-RFQ-MPD-2026-0001-Nile Star Logistics-v1-[0-9a-f]{10}$/);
+  });
+
+  it('is the same name on a retry, or a retry would write a second record', () => {
+    expect(quotationPayload(input(quote())).record_slug).toBe(quotationPayload(input(quote())).record_slug);
+  });
+
+  it('differs for two quotations that share RFQ, provider and version', () => {
+    const a = quotationPayload({ ...input(quote()), idempotencyKey: 'aaaaaaaa11' });
+    const b = quotationPayload({ ...input(quote()), idempotencyKey: 'bbbbbbbb22' });
+    expect(a.record_slug).not.toBe(b.record_slug);
+  });
+
+  it('differs even for two keys that merely start alike', () => {
+    // A slug built from the key's first characters would collide here.
+    const a = quotationPayload({ ...input(quote()), idempotencyKey: 'run-2026-09-27-alpha' });
+    const b = quotationPayload({ ...input(quote()), idempotencyKey: 'run-2026-09-27-bravo' });
+    expect(a.record_slug).not.toBe(b.record_slug);
+  });
+
+  it('is what the DocType names records by', () => {
+    const parent = parentDoctype({ module: 'Freight', supplierLink: true });
+    expect(parent.autoname).toBe('field:record_slug');
+    expect(parent.fields.find((f) => f.fieldname === 'record_slug')?.unique).toBe(1);
   });
 });

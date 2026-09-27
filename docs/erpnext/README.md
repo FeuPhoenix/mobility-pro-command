@@ -25,6 +25,7 @@ The reasoning behind these fields is in `docs/FREIGHT_ERPNEXT.md`.
 | --- | --- | --- | --- |
 | `charge_code` | Data | required |  |
 | `charge_label` | Data | — |  |
+| `amount_missing` | Check | read-only | Set when the provider named this charge without pricing it. The amount is then 0 only because Frappe cannot store an empty number - treat it as unknown, never as free. |
 | `amount` | Float | — | Optional, no default. A charge named without a price is empty, never zero. |
 | `currency` | Data | — |  |
 | `basis` | Select → per_container / per_shipment / per_bl / per_cbm / per_tonne / unknown | — |  |
@@ -35,6 +36,7 @@ The reasoning behind these fields is in `docs/FREIGHT_ERPNEXT.md`.
 
 | Field | Type | Flags | Notes |
 | --- | --- | --- | --- |
+| `record_slug` | Data | unique, read-only | Readable name ending in part of the integration key, so two quotations cannot collide. |
 | `freight_idempotency_key` | Data | required, unique, read-only | What a retry searches on. The unique index is what makes a retry safe. |
 | `company` | Link → Company | required |  |
 | `supplier` | Link → Supplier | — |  |
@@ -73,5 +75,6 @@ The reasoning behind these fields is in `docs/FREIGHT_ERPNEXT.md`.
 | `source_kind` | Data | read-only | email_body, excel, pdf_text or manual. |
 | `source_attachment` | Data | read-only |  |
 | `extractor` | Data | read-only |  |
+| `unstated_numbers` | Small Text | read-only | Comma separated field names that are 0 only because the provider never stated them. Treat each as unknown, not as zero. |
 | `field_confidence` | Code → JSON | read-only | Per field: high, medium, low, missing, corrected_by_reviewer. |
 

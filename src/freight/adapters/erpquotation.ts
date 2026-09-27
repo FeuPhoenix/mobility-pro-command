@@ -26,6 +26,7 @@
  *    cannot silently count the same offer twice.
  */
 
+import { createHash } from 'node:crypto';
 import type { Company, Quote, Rfq } from '../types';
 
 export interface QuotationRecordInput {
@@ -55,6 +56,7 @@ export function quotationPayload(input: QuotationRecordInput): Record<string, un
   return {
     // What a retry searches on, so it updates rather than inserting again.
     freight_idempotency_key: input.idempotencyKey,
+    record_slug: recordSlug(input),
 
     company: input.company.name,
     supplier: input.supplierName,
@@ -92,18 +94,69 @@ export function quotationPayload(input: QuotationRecordInput): Record<string, un
     source_attachment: q.sourceAttachment,
     extractor: q.extractorId,
     field_confidence: JSON.stringify(confidenceMap(q)),
+    // Same reason as amount_missing on a charge: Frappe cannot store an empty
+    // number, so these landed as 0 without ever being stated. A report can
+    // filter on this without parsing the confidence JSON.
+    unstated_numbers: unstatedNumbers(q).join(', ') || null,
 
     charges: q.surcharges.map((s) => ({
       charge_code: s.code,
       charge_label: s.label,
-      // Null when the provider named the charge but not its amount.
+      // Null when the provider named the charge but not its amount. Frappe
+      // stores a Float as 0 rather than null whatever we send, so the flag
+      // below is what keeps "not stated" distinguishable from "free".
       amount: value(s.amount),
+      amount_missing: s.amount === null || s.amount === undefined ? 1 : 0,
       currency: value(s.currency),
       basis: s.basis,
       confidence: s.confidence,
       source_reference: s.sourceRef,
     })),
   };
+}
+
+/**
+ * The document name in ERPNext: readable, and unique.
+ *
+ * It ends in part of the integration key on purpose. A name built from the RFQ,
+ * the provider and the version alone collides whenever two different quotations
+ * share those - and ERPNext then reports a duplicate whose record cannot be
+ * found by key, which is a write that fails on every retry. Found against a
+ * real instance.
+ *
+ * The suffix is a hash of the key rather than its first characters: two keys
+ * that merely start alike would otherwise still collide. It is deterministic,
+ * so a retry builds the same name.
+ */
+function recordSlug(input: QuotationRecordInput): string {
+  const clean = (s: string) => s.replace(/[^A-Za-z0-9 .-]/g, '').trim().slice(0, 40);
+  return [
+    'FQ',
+    clean(input.rfq.reference),
+    clean(input.providerName),
+    `v${input.quote.version}`,
+    createHash('sha256').update(input.idempotencyKey).digest('hex').slice(0, 10),
+  ].join('-');
+}
+
+/**
+ * The numeric fields the provider never stated.
+ *
+ * They are written as 0, because a Frappe Float is NOT NULL with a default of
+ * 0. Naming them here is what stops a report reading "we were quoted nothing"
+ * as "we were quoted zero".
+ */
+function unstatedNumbers(q: Quote): string[] {
+  return (
+    [
+      ['base_freight', q.baseFreight.value],
+      ['total_quoted_by_provider', q.totalQuoted.value],
+      ['transit_days', q.transitDays.value],
+      ['free_days_destination', q.freeDaysDestination.value],
+    ] as const
+  )
+    .filter(([, v]) => v === null || v === undefined)
+    .map(([name]) => name);
 }
 
 /** Which figures were read cleanly, inferred, or corrected by a person. */
@@ -168,10 +221,20 @@ export function quotationFieldNames(): string[] {
 }
 
 /** The child-table fields, likewise. */
+/**
+ * The charge columns written to ERPNext.
+ *
+ * `amount_missing` exists because of what a real Frappe does, not what ours
+ * intends: a Float column is NOT NULL with a default of 0, so a charge the
+ * provider named without pricing lands as 0.00 however carefully we send null.
+ * Zero and "not stated" must not be the same number in their analytics, so the
+ * flag carries the difference. Found against ERPNext 15.121.4.
+ */
 export const QUOTATION_CHARGE_FIELDS = [
   'charge_code',
   'charge_label',
   'amount',
+  'amount_missing',
   'currency',
   'basis',
   'confidence',

@@ -197,12 +197,33 @@ describe('writing a comparison', () => {
 });
 
 describe('checking the connection', () => {
+  /** This fake serves the comparison DocType only. */
+  const comparisonOnly = { ...CFG, quotationDoctype: '' };
+
   it('says connected and ready only when the destination can hold the record', async () => {
-    const ready = await new LiveErp(CFG, fakeFrappe().http).probe();
+    const ready = await new LiveErp(comparisonOnly, fakeFrappe().http).probe();
     expect(ready).toMatchObject({ label: 'ERPNext connected', connected: true, setupRequirements: [], version: '15.40.0' });
 
-    const notReady = await new LiveErp(CFG, fakeFrappe({ parent: parentFields.map((f) => (f.fieldname === 'freight_idempotency_key' ? { ...f, unique: 0 } : f)) }).http).probe();
+    const notReady = await new LiveErp(comparisonOnly, fakeFrappe({ parent: parentFields.map((f) => (f.fieldname === 'freight_idempotency_key' ? { ...f, unique: 0 } : f)) }).http).probe();
     expect(notReady.label).toBe('ERPNext connected, destination not ready');
     expect(notReady.setupRequirements.join()).toMatch(/not marked Unique/);
+  });
+
+  it('is ready on one destination while still reporting what the other needs', async () => {
+    // Found against a real instance: an instance holding the raw quotations is
+    // usable even where the comparison DocType was never created, and calling
+    // that "not ready" would be wrong - but the gap still has to be said.
+    const probed = await new LiveErp(CFG, fakeFrappe().http).probe();
+
+    expect(probed.label).toBe('ERPNext connected');
+    expect(probed.setupRequirements.join()).toMatch(/Freight Quotation/);
+  });
+
+  it('refuses to call itself ready when nothing is configured', async () => {
+    const probed = await new LiveErp({ ...CFG, doctype: '', quotationDoctype: '' }, fakeFrappe().http).probe();
+
+    expect(probed.connected).toBe(true);
+    expect(probed.label).toBe('ERPNext connected, destination not ready');
+    expect(probed.setupRequirements.join()).toMatch(/Neither ERPNEXT_QUOTATION_DOCTYPE nor ERPNEXT_DOCTYPE/);
   });
 });

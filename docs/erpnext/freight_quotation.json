@@ -3,11 +3,19 @@
   "name": "Freight Quotation",
   "module": "Freight",
   "custom": 1,
-  "naming_rule": "Expression (old style)",
-  "autoname": "format:FQ-{rfq_reference}-{provider_name}-v{quotation_version}",
+  "naming_rule": "By fieldname",
+  "autoname": "field:record_slug",
   "title_field": "provider_name",
   "track_changes": 1,
   "fields": [
+    {
+      "fieldname": "record_slug",
+      "label": "Record name",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "description": "Readable name ending in part of the integration key, so two quotations cannot collide."
+    },
     {
       "fieldname": "freight_idempotency_key",
       "label": "Integration key",
@@ -222,6 +230,13 @@
       "label": "Extractor",
       "fieldtype": "Data",
       "read_only": 1
+    },
+    {
+      "fieldname": "unstated_numbers",
+      "label": "Numbers the provider did not state",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "Comma separated field names that are 0 only because the provider never stated them. Treat each as unknown, not as zero."
     },
     {
       "fieldname": "field_confidence",

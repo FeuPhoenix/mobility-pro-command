@@ -465,15 +465,35 @@ export class LiveErp implements ErpAdapter {
       }
 
       // Confirm the destination can hold the record rather than assuming it.
-      let requirements: string[];
-      if (!this.cfg.doctype) {
-        requirements = [
-          'ERPNEXT_DOCTYPE is not set. Inspect the client instance and agree the destination DocType before any write is attempted.',
-        ];
-      } else {
-        requirements = await this.checkDestination(this.cfg.doctype);
+      // Both destinations are checked, and either one being ready is enough.
+      // The raw quotations are the agreed destination; an instance that holds
+      // them is usable even where the comparison DocType was never created,
+      // and reporting it "not ready" for that would be wrong.
+      const requirements: string[] = [];
+      const destinationsReady: string[] = [];
+      let anyReady = false;
+
+      if (this.cfg.quotationDoctype) {
+        const problems = await this.checkQuotationDestination(this.cfg.quotationDoctype);
+        if (problems.length === 0) {
+          anyReady = true;
+          destinationsReady.push(`quotations into "${this.cfg.quotationDoctype}"`);
+        } else requirements.push(...problems);
       }
-      const ready = Boolean(this.cfg.doctype) && requirements.length === 0;
+      if (this.cfg.doctype) {
+        const problems = await this.checkDestination(this.cfg.doctype);
+        if (problems.length === 0) {
+          anyReady = true;
+          destinationsReady.push(`comparison outcomes into "${this.cfg.doctype}"`);
+        } else requirements.push(...problems);
+      }
+      if (!this.cfg.doctype && !this.cfg.quotationDoctype) {
+        requirements.push(
+          'Neither ERPNEXT_QUOTATION_DOCTYPE nor ERPNEXT_DOCTYPE is set. Agree the destination DocType before any write is attempted.',
+        );
+      }
+
+      const ready = anyReady;
 
       const version = await this.readVersion();
       this.lastProbe = {
@@ -481,8 +501,10 @@ export class LiveErp implements ErpAdapter {
         kind: 'live',
         connected: true,
         detail: ready
-          ? `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}. Comparison outcomes will be written to "${this.cfg.doctype}".`
-          : `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}, but the destination is not ready, so no write will be attempted.`,
+          ? `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}. Writing to ${destinationsReady.join(' and ')}.`
+          : `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}, but no destination is ready, so no write will be attempted.`,
+        // A destination that is ready leaves nothing outstanding for it; only
+        // what is still missing is reported.
         setupRequirements: requirements,
         version: version ?? undefined,
         lastProbedAt: new Date().toISOString(),
