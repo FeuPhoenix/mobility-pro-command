@@ -1,6 +1,6 @@
 # Freight RFQ — what is left, and who does it
 
-All the code for W1–W5 is on `dev`. What remains needs a person: a decision
+All the code for W1–W6 is on `main`. What remains needs a person: a decision
 from the customer, an administrator in Microsoft 365 or ERPNext, or a server.
 None of it is a code change unless a decision changes the scope.
 
@@ -16,7 +16,7 @@ Ask these first; several steps below wait on them. Each has a working default.
 
 | # | Question | Default today | Unblocks |
 | --- | --- | --- | --- |
-| 1 | Where do comparison outcomes go in ERPNext: the proposed *Freight Comparison* DocType, or something else? | Nothing is written | **C** |
+| 1 | ~~Where do comparison outcomes go in ERPNext?~~ **Answered 27 Sep: the raw quotations first**, analysis on their side. `Freight Quotation` is the destination; the comparison one stays available. | Raw quotations | **C** |
 | 2 | Are freight providers already Suppliers in ERPNext? | Providers are names | C (`--supplier-link`) |
 | 3 | Do they want RFQs started by email? | Off | **E** |
 | 4 | The real list of people, their roles and companies | Demo people | **D** |
@@ -109,17 +109,37 @@ everything; it is switched off in sign-in mode for that reason.
 deliberately incomplete email shows under *RFQ requests by email* on Replies
 with its problems listed.
 
-## F. Deployment (W6) — not built yet
+## F. Deployment (W6) — the artefacts exist, the host does not
 
-**Who:** you, then me or whoever continues the code.
+**Who:** you, then whoever runs the server.
 
-The freight module needs a normal, long-running Node 22.5+ server with a
-**writable, backed-up disk** for `data/` (the SQLite database and attachments).
-It does not work on read-only serverless hosting such as Vercel functions.
-Choose a host (a small VM, Azure App Service on Linux with a persistent volume,
-Railway, Fly.io, Render with a disk), give it HTTPS and an address, and
-decide who backs up `data/`. Then the deployment itself is about a day of work:
-build, service definition, environment, backups, and the redirect URI in D.
+A container definition and its storage are in the repository now:
+
+| File | What it is |
+| --- | --- |
+| `Dockerfile` | Node 24 build, runs unprivileged, storage on a volume at `/data` |
+| `docker-compose.yml` | One service, a named volume, a health check |
+| `/api/freight/health` | Unauthenticated liveness: opens the database and queries it |
+| `scripts/backup.mjs` | `VACUUM INTO` snapshot, safe while running, prunes to `--keep` |
+
+1. Choose a host with a **writable, backed-up disk**: a small VM, Azure App
+   Service on Linux with a persistent volume, Railway, Fly.io, Render with a
+   disk. Not read-only serverless — the tracked `vercel.json` covers the
+   operations demo, and the freight module will not run there.
+2. `docker compose up -d --build`, with real values in `.env.local` on the
+   server and nowhere else.
+3. Put TLS in front of it. Either terminate with a proxy that sets
+   `x-forwarded-proto`, or set `FREIGHT_FORCE_SECURE_COOKIES=true`. Cookie
+   security follows the request, deliberately — see the note in section 7 of
+   `docs/HANDOFF.md`.
+4. Schedule `node scripts/backup.mjs` nightly, and back up the whole `/data`
+   volume as well: the script covers the database, not the attachments beside
+   it.
+5. Restore-test it once, before there is anything worth losing.
+
+**Done when:** `/api/freight/health` answers `{"ok":true}` through the proxy,
+sign-in works over HTTPS, the container survives `docker compose restart` with
+its data, and a backup has been restored into a throwaway copy and opened.
 
 The operations demo at `/` is a separate, stateless demonstration. Decide
 whether it should be reachable on the production address at all.

@@ -156,11 +156,21 @@ TEAMS_WEBHOOK_URL='https://...' npm run n8n:provision
 The three notification nodes become Adaptive Card posts. Without the URL they
 stay placeholders, which is how the committed exports ship.
 
-### E. Deploy it — *1 day*
+### E. Deploy it — *half a day, once a host exists*
 
-Never deployed. Needs a **writable filesystem** — not read-only serverless.
-Behind TLS, either terminate with a proxy that sets `x-forwarded-proto` or set
-`FREIGHT_FORCE_SECURE_COOKIES=true`.
+Still never deployed, but the artefacts are here: `Dockerfile`,
+`docker-compose.yml`, an unauthenticated `/api/freight/health` that actually
+queries the database, and `scripts/backup.mjs` for a `VACUUM INTO` snapshot that
+is safe to take while the application runs.
+
+Needs a **writable filesystem** — not read-only serverless. Behind TLS, either
+terminate with a proxy that sets `x-forwarded-proto` or set
+`FREIGHT_FORCE_SECURE_COOKIES=true`. Back up the whole data volume, not only the
+database: the attachments sit beside it. `docs/FREIGHT_GO_LIVE.md` section F is
+the checklist.
+
+**The image has never been built** — Docker Desktop was not running on the
+machine this was written on. Build it once before trusting it.
 
 ### F. Real accounts
 

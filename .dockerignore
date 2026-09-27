@@ -1,0 +1,13 @@
+# Keep the build context small, and keep local state and secrets out of the image.
+node_modules
+.next
+.git
+.env*
+!.env.example
+data
+.demo-data*
+.freight-data*
+test-results
+playwright-report
+docs
+*.log
