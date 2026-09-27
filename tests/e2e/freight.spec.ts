@@ -245,6 +245,50 @@ test.describe('freight workspace', () => {
     await page.screenshot({ path: `${SHOTS}/09-erp-recovered.png`, fullPage: true });
   });
 
+  test('a quotation nobody has checked is refused, and the screen says why', async ({ page }) => {
+    await loadDemo(page);
+    await page.goto('/freight/rfqs');
+    await page.getByRole('link', { name: /RFQ-MPD-2026-0001/ }).first().click();
+    await page.getByRole('tab', { name: /Record/ }).click();
+
+    const card = page.locator('.card', { hasText: 'Quotations in ERPNext' });
+    await expect(card.locator('tbody tr')).not.toHaveCount(0);
+    await expect(card.getByText(/figures have not been checked yet/).first()).toBeVisible();
+    // A superseded version explains itself rather than looking merely unrecorded.
+    await expect(card.getByText(/replaced by a later quotation/).first()).toBeVisible();
+    // Nothing unchecked may be offered for writing.
+    await expect(card.getByRole('button', { name: /Record \d+ quotation/ })).toHaveCount(0);
+    await page.screenshot({ path: `${SHOTS}/12-quotation-refusals.png`, fullPage: true });
+  });
+
+  test('checked quotations are recorded, and never presented as live', async ({ page }) => {
+    await loadDemo(page);
+    await page.goto('/freight/rfqs');
+    // 0003 is finished, so it is not in the default list of live requests.
+    await page.getByRole('radio', { name: 'All' }).click();
+    await page.getByRole('link', { name: /RFQ-MPD-2026-0003/ }).first().click();
+    await page.getByRole('tab', { name: /Record/ }).click();
+
+    const card = page.locator('.card', { hasText: 'Quotations in ERPNext' });
+    const record = card.getByRole('button', { name: /Record \d+ quotation/ });
+    await record.click();
+    await page.getByRole('button', { name: /Confirm/ }).click();
+
+    // This request's first ERPNext attempt is scripted to fail in the demo, and
+    // a failure must be visible rather than swallowed - and must not be
+    // announced with a success tick.
+    await expect(page.locator('.toast').filter({ hasText: /failed/ })).toHaveAttribute('data-tone', 'bad');
+    await expect(card.getByText(/did not succeed/).first()).toBeVisible();
+
+    // The retry uses the same idempotency key, so it recovers without a second record.
+    await record.click();
+    await page.getByRole('button', { name: /Confirm/ }).click();
+    await expect(card.getByText('Simulated, not in ERPNext').first()).toBeVisible();
+    await expect(card.getByText('Freight Quotation').first()).toBeVisible();
+    await expect(record).toHaveCount(0);
+    await page.screenshot({ path: `${SHOTS}/13-quotations-recorded.png`, fullPage: true });
+  });
+
   test('an ambiguous reply asks a person instead of guessing', async ({ page }) => {
     await loadDemo(page);
     await page.goto('/freight/inbox');

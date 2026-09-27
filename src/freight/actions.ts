@@ -221,6 +221,12 @@ export interface ActionResult {
   ok: true;
   /** A short sentence for the toast, written in operational language. */
   message: string;
+  /**
+   * How the toast should read. An action can succeed as a request and still
+   * report that part of the work did not land; saying so with a tick would
+   * present a failure as a success.
+   */
+  tone?: 'ok' | 'bad' | 'info';
   data?: unknown;
 }
 
@@ -456,7 +462,13 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
       const parts = [`Recorded ${summary.recorded} quotation${summary.recorded === 1 ? '' : 's'}`];
       if (summary.failed > 0) parts.push(`${summary.failed} failed`);
       if (summary.skipped.length > 0) parts.push(`${summary.skipped.length} not eligible yet`);
-      return { ok: true, message: `${parts.join(', ')}.`, data: summary };
+      return {
+        ok: true,
+        message: `${parts.join(', ')}.`,
+        // Anything that did not land is reported as a failure, not a tick.
+        tone: summary.failed > 0 ? 'bad' : summary.recorded === 0 ? 'info' : 'ok',
+        data: summary,
+      };
     }
 
     case 'erp.syncQuotation': {

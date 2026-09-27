@@ -199,12 +199,18 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
           window.location.href = '/freight/login';
           return null;
         }
-        const payload = (await res.json()) as { ok?: boolean; message?: string; error?: string; data?: T };
+        const payload = (await res.json()) as {
+          ok?: boolean;
+          message?: string;
+          tone?: Toast['tone'];
+          error?: string;
+          data?: T;
+        };
         if (!res.ok || !payload.ok) {
           notify('bad', payload.error ?? 'That did not work.');
           return null;
         }
-        if (payload.message) notify('ok', payload.message);
+        if (payload.message) notify(payload.tone ?? 'ok', payload.message);
         await load(companyId);
         return { message: payload.message ?? '', data: payload.data as T };
       } catch (err) {

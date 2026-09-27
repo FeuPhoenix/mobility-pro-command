@@ -34,8 +34,8 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 301 unit tests
-npm run test:e2e         # 21 browser tests + 4 skipped, needs a build first
+npm test                 # 312 unit tests
+npm run test:e2e         # 23 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 64 checks in demo mode, 12 in the signed-in modes
 ```
 
