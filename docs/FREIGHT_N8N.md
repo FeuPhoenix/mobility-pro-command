@@ -140,7 +140,49 @@ alone rather than the operator guessing. The deliberate choices:
 
 ---
 
-## 6. Setup
+## 6. Running a local n8n
+
+For trying the workflows without touching a client instance.
+
+```bash
+# 1. Tokens for this application
+cp .env.example .env.local        # then fill in the two tokens, or:
+node -e "const{randomUUID:u}=require('node:crypto');console.log('FREIGHT_AUTOMATION_TOKEN='+(u()+u()).replace(/-/g,''))"
+
+# 2. Start this application
+npm run build && npm start        # http://localhost:4310
+
+# 3. Start n8n (installed outside this repo so it stays out of package.json)
+mkdir -p ../n8n-host && cd ../n8n-host && npm init -y && npm install n8n
+N8N_PORT=5678 N8N_DIAGNOSTICS_ENABLED=false N8N_VERSION_NOTIFICATIONS_ENABLED=false   npx n8n start                   # http://localhost:5678
+
+# 4. Provision it from the repo
+npm run n8n:provision
+```
+
+`npm run n8n:provision` creates the owner account, creates both Header Auth
+credentials, regenerates the workflows with **literal URLs** and imports them
+with the credentials already attached. It is idempotent — run it again after
+changing a workflow and it updates rather than duplicating.
+
+> **Why literal URLs.** n8n *Variables* are a licensed feature, so
+> `{{ $vars.MPC_BASE_URL }}` does not resolve on the community edition. The
+> committed exports keep `$vars`, which is right for a licensed instance;
+> the provisioner regenerates them with
+> `--base-url=... --out=scripts/.n8n-workflows` for a community one.
+
+Defaults, all overridable by environment variable: `N8N_URL`
+`http://localhost:5678`, `MPC_BASE_URL` `http://localhost:4310`, `N8N_EMAIL`
+`freight@mobilitypro.test`, `N8N_PASSWORD` `FreightRfq2026`.
+
+The provisioner uses n8n's **internal** REST API — the one its editor uses —
+because the public API needs an API key, which you can only get by logging in
+first. That is fine for a local instance you control; it is not a supported
+integration point and may change between n8n versions.
+
+---
+
+## 7. Setup against a client instance
 
 ```bash
 # .env.local
@@ -158,7 +200,7 @@ In n8n:
 
 ---
 
-## 7. Live test checklist
+## 8. Live test checklist
 
 Nothing below has been done — there was no instance to do it on.
 
@@ -181,7 +223,7 @@ to send, the approval guarantee this whole module is built around is gone.
 
 ---
 
-## 8. What is not built
+## 9. What is not built
 
 - **Notification delivery.** The workflows stop at a placeholder; the Slack or
   Teams node is the client's to add, with their credential.

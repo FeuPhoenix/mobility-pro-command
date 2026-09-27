@@ -21,3 +21,7 @@ brag-output/
 # rebuilt by "Load demo data", so neither belongs in the repository.
 data/
 .freight-data-e2e/
+
+# Workflow exports regenerated with literal URLs for a specific n8n instance.
+# The committed exports under public/n8n/ are the source of truth.
+scripts/.n8n-workflows/

@@ -6,13 +6,33 @@
  * application" notes. Re-run with `node scripts/build-freight-workflows.mjs`
  * after changing an endpoint path.
  *
- * The output is importable into a real n8n instance. Set two n8n variables
- * (`MPC_BASE_URL`) and a Header Auth credential carrying the bearer token.
+ * The output is importable into a real n8n instance. It needs an n8n variable
+ * `MPC_BASE_URL` and a Header Auth credential carrying the bearer token.
+ *
+ * COMMUNITY EDITION
+ * -----------------
+ * n8n Variables are a licensed feature, so `$vars` does not resolve on the
+ * community edition. Pass a base URL to write literal URLs instead:
+ *
+ *   node scripts/build-freight-workflows.mjs --base-url=http://localhost:4310 --out=some/dir
+ *
+ * The committed exports keep `$vars`, which is the right default for a licensed
+ * instance and makes the URL configurable without editing seven nodes.
  */
 
-import { writeFileSync, readdirSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readdirSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 
-const OUT = 'public/n8n';
+const arg = (name) => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+};
+
+const BASE_URL = arg('base-url');
+const OUT = arg('out') ?? 'public/n8n';
+mkdirSync(OUT, { recursive: true });
+
+/** `$vars` by default; a literal URL when one is supplied for community edition. */
+const urlFor = (path) => (BASE_URL ? `${BASE_URL}${path}` : `={{ $vars.MPC_BASE_URL }}${path}`);
 
 const node = (id, name, type, typeVersion, position, parameters, notes) => ({
   parameters,
@@ -38,7 +58,7 @@ const http = (id, name, method, path, position, notes) =>
     position,
     {
       method,
-      url: `={{ $vars.MPC_BASE_URL }}${path}`,
+      url: urlFor(path),
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
       // fullResponse so a failure can be branched on rather than thrown.
@@ -362,7 +382,7 @@ for (const file of readdirSync(OUT).filter((f) => f.startsWith('freight-'))) {
   for (const n of wf.nodes) {
     const url = n.parameters?.url;
     if (typeof url !== 'string') continue;
-    const path = url.replace('={{ $vars.MPC_BASE_URL }}', '');
+    const path = BASE_URL ? url.replace(BASE_URL, '') : url.replace('={{ $vars.MPC_BASE_URL }}', '');
     if (!existsSync(`src/app${path}/route.ts`)) fail(`${file}: no route for ${path}`);
     else console.log(`  ok  ${file.padEnd(34)} ${n.parameters.method.padEnd(4)} ${path}`);
   }

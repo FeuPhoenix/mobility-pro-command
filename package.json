@@ -10,7 +10,9 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "workflows:build": "node scripts/build-freight-workflows.mjs",
+    "n8n:provision": "node scripts/provision-n8n.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
