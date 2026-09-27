@@ -135,6 +135,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {item.label}
             </Link>
           ))}
+
+          <div className="rail-group-label">Other modules</div>
+          <Link
+            href="/freight"
+            className="rail-link"
+            data-active={false}
+            onClick={() => setRailOpen(false)}
+          >
+            <Icon name="freight" />
+            Freight RFQ
+          </Link>
         </div>
 
         <div className="rail-foot">

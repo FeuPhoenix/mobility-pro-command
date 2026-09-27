@@ -290,6 +290,7 @@ type IconName =
   | 'customers'
   | 'approvals'
   | 'automations'
+  | 'freight'
   | 'assistant'
   | 'reset'
   | 'play'
@@ -314,6 +315,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M12.5 4.5 15 7l-2.5 2.5" />
     </>
   ),
+  freight: <path d="M2.5 11h15l-2 4.5h-11zM5 11V7h5v4M10 8.5h3.5V11M7 7V4.5" />,
   assistant: <path d="M4 4h12v8H8l-4 3z" />,
   reset: <path d="M16 10a6 6 0 1 1-1.8-4.3M16 3v3h-3" />,
   play: <path d="M6 4l9 6-9 6z" />,
