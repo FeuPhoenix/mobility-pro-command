@@ -1,9 +1,14 @@
 # Freight RFQ — n8n automation
 
-**Status: built and tested against a simulated adapter. Not yet run against a
-real n8n instance** — none was available. The endpoints are real and covered by
-tests; the workflow exports are real and importable. What has not happened is a
-live import into someone's n8n. The checklist at the end is for that.
+**Status: verified against a real n8n instance** — n8n **2.40.7**, community
+edition, running locally. All five workflows were imported and executed, and
+every node ran green. The one thing still unverified is whether the placeholder
+notification node posts anywhere, because there is no Slack or Teams credential
+to post with; that step stays manual.
+
+Mail and ERPNext remain simulated underneath, so what was proven is the seam —
+n8n's trigger, its credential, its expressions, the endpoints, the rules and the
+refusals — not a real email to a real provider.
 
 ---
 
@@ -204,22 +209,59 @@ In n8n:
 
 Nothing below has been done — there was no instance to do it on.
 
-| # | Step | Expected | Result |
+Run it with `npm run n8n:livetest` (endpoints and imports) plus
+`node scripts/n8n-run-workflow.mjs "<name>"` to execute a workflow inside n8n
+and see what each node did.
+
+| # | Step | Expected | Result on n8n 2.40.7 |
 | --- | --- | --- | --- |
-| 1 | Import all five | They import inactive, no missing-node warnings | |
-| 2 | Run *Daily briefing* manually | 200, counts match the Overview screen | |
-| 3 | Unset the token, run again | 404 and a message saying automation is switched off | |
-| 4 | Wrong token | 401 | |
-| 5 | Run *Approval nudge* with an email awaiting approval | `count` ≥ 1, the placeholder node fires | |
-| 6 | Run *Deadline chaser* with a provider past the policy | Drafts appear in the approval queue, **nothing sent** | |
-| 7 | Run it again immediately | 0 prepared, the providers reported as skipped | |
-| 8 | Check the activity trail | Entries attributed to "Scheduled automation" | |
-| 9 | Run *ERPNext retry* with a failed record | It recovers, attempts increments, no duplicate | |
-| 10 | Run *Reply collection* | Replies filed; a second run files nothing twice | |
-| 11 | Try to send from a workflow | There is no endpoint that can. Confirm none was added | |
+| 1 | Import all five | Import inactive, no missing-node warnings | **pass** |
+| 2 | Run *Daily briefing* | 200, counts match the Overview screen | **pass** |
+| 3 | Unset the token | 404, "automation is switched off" | **pass** |
+| 4 | Wrong token | 401 | **pass** |
+| 5 | Run *Approval nudge* with something waiting | `count` ≥ 1, branches to the nudge | **pass** (count 2) |
+| 6 | Run *Deadline chaser* with a provider past the policy | Drafts in the approval queue, **nothing sent** | **pass** (2 drafts, `sentAt: never`) |
+| 7 | Run it again immediately | 0 prepared | **pass** ("No provider was due a reminder", still 2 not 4) |
+| 8 | Check the activity trail | Attributed to "Scheduled automation" | **pass** |
+| 9 | Run *ERPNext retry* with a failed record | Recovers, no duplicate | **pass** (branches to Recovered) |
+| 10 | Run *Reply collection* | Files replies, nothing twice | **pass** (branches to Done) |
+| 11 | Try to send from a workflow | No endpoint can | **pass** (both probes 404) |
+| — | Placeholder notification posts | Needs a Slack or Teams node | **manual** |
 
 Step 11 matters most. If a future endpoint ever makes it possible for a workflow
 to send, the approval guarantee this whole module is built around is gone.
+
+### What the run actually showed
+
+The deadline chaser, executed by n8n rather than by a script:
+
+```
+ran  Every weekday at 09:00
+ran  Who is due a chase?          HTTP 200 — {"providersDue":2, ...}
+ran  Anyone due?                  (true branch)
+ran  Prepare the reminders        HTTP 200 — Prepared 2 reminders. They are
+                                  waiting for approval and nothing has been sent.
+ran  Tell the manager they are waiting
+```
+
+and in the application afterwards:
+
+```
+rfq       | sent              | sentAt: 2026-09-27T06:56:56Z
+rfq       | sent              | sentAt: 2026-09-27T06:56:56Z
+reminder  | awaiting_approval | sentAt: never
+reminder  | awaiting_approval | sentAt: never
+```
+
+### Two things the live run found
+
+1. **The simulated ERPNext failure counted attempts in memory**, so a server
+   restart made its one scripted failure fire a second time. It now takes the
+   attempt number from the persisted sync row, which is both deterministic and
+   restart-safe.
+2. **The demonstration dataset never had anyone due a chase**, because every
+   request was sent "just now". One request is now backdated five days, so the
+   chasing path is visible in the demo instead of being dead code.
 
 ---
 

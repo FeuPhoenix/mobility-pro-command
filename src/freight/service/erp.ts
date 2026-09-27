@@ -120,6 +120,7 @@ export async function runSync(ctx: Ctx, comparisonId: Id): Promise<SyncOutcome> 
       providerNames,
       workbook,
       comparisonDate: comparison.createdAt.slice(0, 10),
+      attempt: sync.attempts,
     });
 
     const done: ErpSync = {

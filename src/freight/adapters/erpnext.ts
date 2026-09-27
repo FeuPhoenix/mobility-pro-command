@@ -38,6 +38,12 @@ export interface ErpRecordInput {
   providerNames: Record<string, string>;
   workbook: { filename: string; content: Buffer } | null;
   comparisonDate: string;
+  /**
+   * Which attempt this is, counting from 1, taken from the persisted sync row.
+   * The simulated adapter keys its one scripted failure off this rather than a
+   * process-local counter, so a restart cannot make it fail twice.
+   */
+  attempt: number;
 }
 
 export interface ErpResult {
@@ -91,13 +97,14 @@ export interface ErpAdapter {
  * and a real retry against real state, rather than a scripted animation.
  */
 export class SimulatedErp implements ErpAdapter {
-  /** Attempts seen per key, so a retry genuinely differs from a first try. */
-  private static attempts = new Map<string, number>();
-
   constructor(private readonly failFirstAttempt = false) {}
 
+  /**
+   * Kept for callers that used to clear a process-local counter. The attempt
+   * number now comes from the database, so there is nothing to reset.
+   */
   static reset(): void {
-    SimulatedErp.attempts.clear();
+    /* intentionally empty */
   }
 
   status(): ErpStatus {
@@ -119,11 +126,9 @@ export class SimulatedErp implements ErpAdapter {
   }
 
   async record(input: ErpRecordInput): Promise<ErpResult> {
-    const seen = (SimulatedErp.attempts.get(input.idempotencyKey) ?? 0) + 1;
-    SimulatedErp.attempts.set(input.idempotencyKey, seen);
+    const seen = input.attempt;
 
-    const failFirst = this.failFirstAttempt;
-    if (failFirst && seen === 1) {
+    if (this.failFirstAttempt && seen === 1) {
       throw new ErpFailure(
         'The ERPNext request timed out after 30 seconds (simulated). Nothing was written. This can be retried safely: the record carries an idempotency key, so a retry will not create a duplicate.',
         true,
@@ -135,7 +140,7 @@ export class SimulatedErp implements ErpAdapter {
       remoteName: `SIM-${input.rfq.reference}`,
       remoteUrl: null,
       simulated: true,
-      updatedExisting: seen > (failFirst ? 2 : 1),
+      updatedExisting: seen > (this.failFirstAttempt ? 2 : 1),
     };
   }
 }

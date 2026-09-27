@@ -167,7 +167,13 @@ if (retryable > 0) {
     method: 'POST',
     body: {},
   });
-  ok('retry answers 200', retry.status === 200, String(retry.status));
+  // `ok` matters more than the status: the endpoint answers 200 even when a
+  // record is still failing, and reports it in the body.
+  ok(
+    'the retry recorded the outcome',
+    retry.status === 200 && retry.body?.ok === true,
+    `${retry.status} ${retry.body?.message ?? ''} ${JSON.stringify(retry.body?.data?.results ?? []).slice(0, 160)}`,
+  );
   const after = await call('/api/freight/automation/erpnext', { token: AUTOMATION_TOKEN });
   ok(
     'the retried record is no longer outstanding',
@@ -253,8 +259,24 @@ if (!n8nUp) {
   }
 }
 
-todo('Step 5/6: confirm the placeholder notification node fires (needs a Slack or email node)');
-todo('Step 8: confirm the activity trail attributes the run to "Scheduled automation"');
+console.log('');
+console.log('Step 8: automation acts under its own name');
+const trail = await fetch(`${MPC}/api/freight/state`).then((r) => r.json());
+const rfqWithReminders = trail?.overview?.approvals?.find((a) => a.kind === 'reminder');
+if (rfqWithReminders) {
+  const detail = await fetch(`${MPC}/api/freight/rfq/${rfqWithReminders.rfqId}`).then((r) => r.json());
+  const entry = (detail?.detail?.timeline ?? []).find((t) => t.actor === 'Scheduled automation');
+  ok('the trail attributes the run to "Scheduled automation"', Boolean(entry), 'no such entry');
+  if (entry) console.log(`          "${entry.summary}"`);
+
+  const reminders = (detail?.detail?.emails ?? []).filter((e) => e.kind === 'reminder');
+  ok('every prepared reminder is awaiting approval', reminders.every((e) => e.status === 'awaiting_approval'));
+  ok('no prepared reminder has been sent', reminders.every((e) => e.sentAt === null));
+} else {
+  console.log('  SKIP    no reminder in this dataset to check attribution against');
+}
+
+todo('Step 5/6: confirm the placeholder notification node posts (needs a Slack or email node)');
 
 console.log(`\n================  ${pass} passed, ${fail} failed, ${manual} manual  ================\n`);
 process.exit(fail === 0 ? 0 : 1);

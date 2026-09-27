@@ -21,6 +21,8 @@ import {
   insertUser,
   listEmails,
   listQuotes,
+  listRecipients,
+  updateRecipient,
   newId,
   now,
   updateRfq,
@@ -210,7 +212,16 @@ export async function seedDemo(): Promise<SeedResult> {
   });
   setRecipients(manager, rfq2.id, [link('Anchor Line Agencies'), link('Nile Star Logistics')]);
   await approveAndSend(manager, rfq2.id);
-  summary.push(`${rfq2.reference}: sent, still waiting for responses.`);
+
+  // Backdate this one so the chase policy has something real to act on. Without
+  // it every request in the demo was sent "just now", nothing is ever due, and
+  // the whole chasing path stays invisible.
+  for (const r of listRecipients(rfq2.id)) {
+    updateRecipient({ ...r, sentAt: instant(-5, 9) });
+  }
+  summary.push(
+    `${rfq2.reference}: sent five days ago, no replies - two providers are due a chase.`,
+  );
 
   /* ---------------------------- The replies -------------------------------- */
 
