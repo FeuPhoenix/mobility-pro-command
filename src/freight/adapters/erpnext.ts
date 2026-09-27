@@ -439,9 +439,13 @@ export class LiveErp implements ErpAdapter {
       kind: 'live',
       connected: false,
       detail: `Configured for ${this.cfg.baseUrl}. The connection has not been checked, so it is not described as connected.`,
-      setupRequirements: this.cfg.doctype
-        ? []
-        : ['Set ERPNEXT_DOCTYPE once the destination DocType has been agreed on the client instance.'],
+      // Either destination is enough; the quotations are the agreed one.
+      setupRequirements:
+        this.cfg.quotationDoctype || this.cfg.doctype
+          ? []
+          : [
+              'Set ERPNEXT_QUOTATION_DOCTYPE (the agreed destination for raw quotations), or ERPNEXT_DOCTYPE for comparison outcomes.',
+            ],
     };
   }
 

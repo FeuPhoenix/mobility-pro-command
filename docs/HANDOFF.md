@@ -138,8 +138,10 @@ quotation cannot be written rather than leaving the row silently empty. What is
 left on this item is theirs: create the DocType, then run it once against a real
 instance.
 
-**This has now been run against a real ERPNext** (15.121.4, in a throwaway
-container). `tests/erpnext-instance.test.ts` is that check, skipped unless
+**The whole application has now written to a real ERPNext** (15.121.4, in a
+throwaway container): `ERPNEXT_ADAPTER=live`, Settings → Check connection
+reporting *ERPNext connected*, then Record → *Record quotations* writing two
+quotations as `live` (not simulated), and a repeated sync writing nothing new. `tests/erpnext-instance.test.ts` is that check, skipped unless
 `ERPNEXT_LIVE_URL`/`_KEY`/`_SECRET` point at a **test** instance. Run it against
 theirs once the DocType exists; it is the fastest way to know the integration
 holds.
