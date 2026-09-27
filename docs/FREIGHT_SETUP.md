@@ -25,9 +25,9 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 118 business-logic tests (Vitest), 36 of them freight
-npm run test:e2e     # 9 browser journeys (Playwright, uses your installed Chrome)
-node scripts/journey.mjs   # 54 end-to-end checks over HTTP against a running server
+npm test             # 210 business-logic tests (Vitest)
+npm run test:e2e     # 21 browser journeys (Playwright, uses your installed Chrome)
+node scripts/journey.mjs   # 61 end-to-end checks over HTTP against a running server
 ```
 
 `npm run test:e2e` needs a production build first and starts its own server on
@@ -148,6 +148,48 @@ collected, and anything unrecognised goes to the review queue.
 
 A reply can still be brought in by hand from the request screen, and the whole
 downstream workflow behaves identically.
+
+### Starting an RFQ by email (off by default)
+
+`RFQ_EMAIL_INTAKE=on` lets colleagues raise a request by email. It needs reply
+collection (above) running, because it reads the same mailbox.
+
+A person on the **People** list emails the freight mailbox with *New RFQ*,
+*RFQ request* or *Shipping requirement* in the subject (not a reply, and
+without an existing RFQ reference), and either attaches the Excel template from
+*Requests → New* or writes labelled lines:
+
+```
+Company: MPD                       (only if they cover several companies)
+Title: Tyre import, North China to Alexandria
+Origin port: CNSHA
+Destination port: EGALY
+Incoterm: FOB
+Containers: 6 x 40HC, Passenger car tyres, 21500 kg
+Containers: 2 x 20GP, Truck tyres
+Ship from: 2026-11-10
+Ship to: 2026-11-24
+Reply by: 2026-10-06               (15:00 UTC that day, unless a time is given)
+Currency: USD
+Cargo notes: ...                   (optional)
+Instructions: ...                  (optional)
+```
+
+What happens:
+
+- A readable request becomes a **draft** RFQ in the sender's name, validated
+  exactly as the form validates. Providers are not chosen and nothing is sent;
+  that stays with a person, under the usual approval rule.
+- One that cannot be read in full creates nothing. It appears under *RFQ
+  requests by email* on **Replies**, with every problem listed, until someone
+  dismisses it.
+- A read-only person, or a company the sender does not cover, is refused with
+  the reason.
+- The same email collected twice is recognised and ignored.
+
+Mail from anyone not on the People list goes through normal reply matching.
+Sender addresses can be forged, which is one reason this only ever creates
+drafts that a person reviews before anything is sent.
 
 ### ERPNext
 

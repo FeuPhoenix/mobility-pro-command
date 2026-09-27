@@ -11,6 +11,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Card, CardHead, Empty, Field, Notice, Pill } from '@/components/ui';
+import { RfqRequestsCard } from '@/freight/ui/RfqRequestsCard';
 import { useFreight } from '@/freight/ui/FreightProvider';
 import { formatWhen, truncate } from '@/freight/ui/bits';
 import { useSearchParams } from 'next/navigation';
@@ -49,6 +50,8 @@ export default function InboxPage() {
           ) : null}
         </div>
       </div>
+
+      <RfqRequestsCard />
 
       {unmatched.length === 0 && !showMatched ? (
         <Card>

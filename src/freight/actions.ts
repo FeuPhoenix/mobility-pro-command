@@ -34,6 +34,7 @@ import { queueSync, runSync } from './service/erp';
 import { collectInbox } from './service/collect';
 import { checkConnection } from './service/connections';
 import { addPerson, setPersonDisabled, updatePerson } from './auth/people';
+import { dismissRfqRequest } from './service/intake';
 import { setSetting } from './db';
 
 const lane = z.object({ originPort: z.string().min(2), destinationPort: z.string().min(2) });
@@ -198,6 +199,7 @@ export const ActionSchema = z.discriminatedUnion('type', [
     companyIds: z.array(z.string()),
   }),
   z.object({ type: z.literal('people.setDisabled'), userId: z.string(), disabled: z.boolean() }),
+  z.object({ type: z.literal('rfqRequest.dismiss'), requestId: z.string() }),
   z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox', 'erp']) }),
 
   z.object({
@@ -475,9 +477,9 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
         message:
           run.outcome === 'skipped'
             ? (run.error ?? 'Nothing to collect.')
-            : run.filed === 0
+            : run.filed === 0 && run.rfqRequests === 0
               ? `No new replies${run.adapter === 'simulated' ? ' in the simulated mailbox' : ''}.`
-              : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person.`,
+              : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person${run.rfqRequests > 0 ? `; ${run.rfqRequests} emailed RFQ request${run.rfqRequests === 1 ? '' : 's'}` : ''}.`,
         data: run,
       };
     }
@@ -499,6 +501,11 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
         message: action.disabled ? `Switched off access for ${person.name}.` : `Restored access for ${person.name}.`,
         data: person,
       };
+    }
+
+    case 'rfqRequest.dismiss': {
+      const request = dismissRfqRequest(ctx, action.requestId);
+      return { ok: true, message: 'Dismissed.', data: request };
     }
 
     case 'connection.check': {

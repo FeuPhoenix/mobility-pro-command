@@ -20,10 +20,11 @@
  */
 
 import { db, getSetting, setSetting } from '../db';
-import { audit, findInboundByExternalId, listAllCompanyIds, now, type Ctx } from '../repo';
+import { audit, findInboundByExternalId, findRfqRequestByExternalId, listAllCompanyIds, now, type Ctx } from '../repo';
 import { CollectFailure, resolveMailbox, type MailboxSource } from '../adapters/mailbox';
 import { mailboxCollectorCtx } from '../system';
 import { ingestMessage } from './inbox';
+import { ingestRfqRequest, isRfqRequest } from './intake';
 
 export type CollectTrigger = 'schedule' | 'manual' | 'external';
 
@@ -45,6 +46,8 @@ export interface CollectionRun {
   matched: number;
   /** Filed into the review queue for a person to attach. */
   needsReview: number;
+  /** Colleagues' emailed shipping requirements (RFQ_EMAIL_INTAKE=on). */
+  rfqRequests: number;
   /** Messages set aside after repeated failures. */
   quarantined: { externalId: string; from: string; subject: string; error: string }[];
   /** Things the mailbox could not bring across, e.g. linked attachments. */
@@ -130,6 +133,7 @@ export async function collectInbox(
     duplicates: 0,
     matched: 0,
     needsReview: 0,
+    rfqRequests: 0,
     quarantined: [],
     notes: [],
     error: null,
@@ -193,15 +197,21 @@ async function runPages(source: MailboxSource, run: CollectionRun): Promise<void
     run.notes.push(...page.notes);
 
     for (const mail of page.messages) {
-      if (findInboundByExternalId(mail.externalId)) {
+      if (findInboundByExternalId(mail.externalId) || findRfqRequestByExternalId(mail.externalId)) {
         run.duplicates += 1;
         continue;
       }
       try {
-        const result = await ingestMessage(ctx, mail);
-        run.filed += 1;
-        if (result.message.matchStatus === 'matched') run.matched += 1;
-        else run.needsReview += 1;
+        if (isRfqRequest(mail)) {
+          // A colleague asking for a new RFQ, not a provider replying to one.
+          await ingestRfqRequest(mail);
+          run.rfqRequests += 1;
+        } else {
+          const result = await ingestMessage(ctx, mail);
+          run.filed += 1;
+          if (result.message.matchStatus === 'matched') run.matched += 1;
+          else run.needsReview += 1;
+        }
         delete failures[mail.externalId];
       } catch (err) {
         const reason = err instanceof Error ? err.message : 'could not be filed';
@@ -246,7 +256,7 @@ function recordRun(run: CollectionRun): void {
     summary:
       run.outcome === 'failed'
         ? `Collecting replies failed: ${run.error}`
-        : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person${run.duplicates > 0 ? `, ${run.duplicates} already collected` : ''}.`,
+        : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person${run.rfqRequests > 0 ? `; ${run.rfqRequests} emailed RFQ request${run.rfqRequests === 1 ? '' : 's'}` : ''}${run.duplicates > 0 ? `, ${run.duplicates} already collected` : ''}.`,
     detail: {
       trigger: run.trigger,
       requestedBy: run.requestedBy,

@@ -139,3 +139,32 @@ Defect found while doing it:
    `threadId ?? inReplyTo`, and Graph supplies a conversation id on every
    message, so a reply's In-Reply-To was ignored even had a real Message-ID
    been stored. Both are now tried. Undoing the fix fails two tests.
+
+## 2026-09-27 — Atomic filing, W3, W4, W5 (code side)
+
+Branch: `dev`.
+
+- [x] A reply and its quotation are filed in one transaction; a failed read
+      leaves nothing behind (2 tests fail on the old code)
+- [x] W3: the live ERPNext adapter checks the destination DocType before every
+      write (all fields, `offers` table, Unique key); a failed duplicate check
+      stops the write; a racing insert is recovered; the workbook is attached
+      once; `ERPNEXT_COMPANY_MAP`; Check connection; a script to create the
+      proposed DocType, checked against the payload by a test
+- [x] W4: `AUTH_MODE=entra` Sign in with Microsoft (OIDC + PKCE, full ID token
+      verification), People screen, account binding on first sign-in,
+      bootstrap administrator, fail-closed configuration
+- [x] W5: `RFQ_EMAIL_INTAKE=on` turns a colleague's "New RFQ" email (labelled
+      lines or the Excel template) into draft RFQs; unreadable requests are
+      listed with reasons on Replies
+- [x] Tests: 210 unit, 21 browser, 61 journey
+
+Defects found while doing it:
+
+10. **Creating a company gave access only in memory.** The creator lost sight
+    of the new company on the next request. Now saved.
+11. **Thousands separators split container weights.** "6 x 40HC, tyres,
+    21,500 kg" read the weight as 500, because the line is split on commas.
+    Found by a parser test written before the code was trusted, exactly as the
+    handover advised; separators are now removed first.
+

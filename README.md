@@ -28,7 +28,7 @@ npm start          # http://localhost:4310
 Tests:
 
 ```bash
-npm test           # 118 business-logic tests (Vitest)
+npm test           # 210 business-logic tests (Vitest)
 npm run test:e2e   # browser journey tests (Playwright, uses your installed Chrome)
 
 # Freight module only:

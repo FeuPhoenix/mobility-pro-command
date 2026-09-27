@@ -8,6 +8,8 @@ import { getSetting } from '@/freight/db';
 import { RELATIONSHIP_LABEL } from '@/freight/types';
 import { authMode, entraConfig } from '@/freight/auth/config';
 import { listPeople } from '@/freight/auth/people';
+import { listRfqRequests } from '@/freight/repo';
+import { intakeEnabled } from '@/freight/service/intake';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +69,7 @@ export async function GET(request: Request) {
     overview,
     providers,
     inbox: listInbound(ctx),
+    rfqRequests: { enabled: intakeEnabled(), items: listRfqRequests(ctx) },
     integrations: integrationStatus(),
     settings: {
       criteria: getSetting('ranking.criteria', null),

@@ -331,6 +331,31 @@ export interface EmailDraft {
 
 export type MatchStatus = 'matched' | 'ambiguous' | 'unmatched';
 
+/**
+ * A shipping requirement a colleague emailed in (W5, RFQ_EMAIL_INTAKE=on).
+ * Kept separately from provider replies: it creates draft RFQs, never quotes.
+ */
+export interface RfqRequest {
+  id: Id;
+  /** Transport message id; collecting the same email twice creates nothing new. */
+  externalId: string;
+  fromEmail: string;
+  /** The workspace person it was accepted from, when the sender is one. */
+  userId: Id | null;
+  subject: string;
+  receivedAt: Instant;
+  bodyText: string;
+  status: 'created' | 'needs_attention' | 'dismissed';
+  /** Draft RFQs created from it. */
+  rfqIds: Id[];
+  /** Why it could not be turned into an RFQ, in plain language. */
+  problems: string[];
+  /** Companies it may be shown to: the sender's, or the one it was filed under. */
+  companyIds: Id[];
+  simulated: boolean;
+  createdAt: Instant;
+}
+
 export interface MatchCandidate {
   rfqId: Id;
   rfqReference: string;

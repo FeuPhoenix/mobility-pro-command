@@ -235,6 +235,22 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS audit_company_at ON audit_events (company_id, at DESC);
 CREATE INDEX IF NOT EXISTS audit_subject ON audit_events (subject, at DESC);
 
+CREATE TABLE IF NOT EXISTS rfq_requests (
+  id TEXT PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  from_email TEXT NOT NULL,
+  user_id TEXT,
+  subject TEXT NOT NULL,
+  received_at TEXT NOT NULL,
+  body_text TEXT NOT NULL,
+  status TEXT NOT NULL,
+  rfq_ids TEXT NOT NULL,
+  problems TEXT NOT NULL,
+  company_ids TEXT NOT NULL,
+  simulated INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -361,6 +377,7 @@ export function truncateAll(): void {
     'comparisons',
     'quotes',
     'inbound_messages',
+    'rfq_requests',
     'emails',
     'rfq_recipients',
     'rfqs',

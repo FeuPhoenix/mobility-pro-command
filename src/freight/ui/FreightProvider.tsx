@@ -18,7 +18,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { Company, InboundMessage, RankingCriteria, FxRate, User } from '@/freight/types';
+import type { Company, InboundMessage, RankingCriteria, FxRate, RfqRequest, User } from '@/freight/types';
 import type { Overview, IntegrationStatus } from '@/freight/view';
 
 export interface ProviderRow {
@@ -48,6 +48,7 @@ export interface FreightState {
   overview: Overview | null;
   providers: ProviderRow[];
   inbox: InboundMessage[];
+  rfqRequests?: { enabled: boolean; items: RfqRequest[] };
   integrations: IntegrationStatus | null;
   settings: {
     criteria: RankingCriteria | null;
