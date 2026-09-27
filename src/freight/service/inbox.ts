@@ -36,6 +36,7 @@ import {
   updateQuote,
   updateRecipient,
   FreightError,
+  tx,
   type Ctx,
 } from '../repo';
 import { matchMessage, type MatchContext } from '../domain/matching';
@@ -161,47 +162,70 @@ export async function ingestMessage(ctx: Ctx, mail: IncomingMail): Promise<Inges
     simulated: mail.simulated,
     createdAt: at,
   };
-  insertInbound(message);
+  const matched = outcome.status === 'matched' && Boolean(message.rfqId && message.companyProviderId);
 
-  const rfq = message.rfqId ? getRfqUnscoped(message.rfqId) : null;
-  audit(ctx, {
-    companyId: rfq?.companyId ?? null,
-    action: 'inbox.received',
-    subject: message.rfqId ? `rfq:${message.rfqId}` : `message:${message.id}`,
-    summary:
-      outcome.status === 'matched'
-        ? `Received a reply from ${mail.fromEmail} and matched it to ${rfq?.reference ?? 'an RFQ'}.`
-        : `Received a reply from ${mail.fromEmail} that needs a person to say which RFQ it belongs to.`,
-    detail: { matchStatus: outcome.status, basis: outcome.basis },
+  // The slow, fallible part - reading the quotation - happens before anything
+  // is written. Then the message, its quotation and their audit entries land in
+  // one transaction. A failure therefore leaves nothing behind, and the next
+  // collection run tries the whole message again instead of finding it
+  // "already collected" with no quotation.
+  const extracted = matched ? await extractFor(ctx, message) : null;
+
+  const quote = tx(() => {
+    insertInbound(message);
+    const rfq = message.rfqId ? getRfqUnscoped(message.rfqId) : null;
+    audit(ctx, {
+      companyId: rfq?.companyId ?? null,
+      action: 'inbox.received',
+      subject: message.rfqId ? `rfq:${message.rfqId}` : `message:${message.id}`,
+      summary:
+        outcome.status === 'matched'
+          ? `Received a reply from ${mail.fromEmail} and matched it to ${rfq?.reference ?? 'an RFQ'}.`
+          : `Received a reply from ${mail.fromEmail} that needs a person to say which RFQ it belongs to.`,
+      detail: { matchStatus: outcome.status, basis: outcome.basis },
+    });
+    return extracted ? commitQuote(ctx, message, extracted) : null;
   });
 
-  if (outcome.status !== 'matched' || !message.rfqId || !message.companyProviderId) {
+  if (!quote) {
     return {
       message,
       quote: null,
       note: 'The reply could not be matched automatically, so no quotation was created. It is waiting in the review queue.',
     };
   }
-
-  const quote = await createQuoteFromMessage(ctx, message);
   return { message, quote, note: null };
 }
 
-/** Extracts a quotation from an already-matched message. */
-export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage): Promise<Quote> {
+type Extraction = Awaited<ReturnType<typeof extractQuote>>;
+
+/** Reads the quotation out of a matched message. Writes nothing. */
+async function extractFor(ctx: Ctx, message: InboundMessage): Promise<Extraction> {
   if (!message.rfqId || !message.companyProviderId) {
     throw new FreightError('That message is not attached to an RFQ and provider yet.');
   }
-  const rfq = getRfq(ctx, message.rfqId);
+  getRfq(ctx, message.rfqId); // company access, before any work is done
+  return extractQuote({ message, at: now() });
+}
+
+/**
+ * Records an extracted quotation. Synchronous, so callers run it inside the
+ * same transaction as the message it came from. The version is worked out
+ * here, inside that transaction, so two replies from one provider cannot both
+ * claim the same version number.
+ */
+function commitQuote(ctx: Ctx, message: InboundMessage, extracted: Extraction): Quote {
+  const { quote: body, aiCall } = extracted;
+  const rfq = getRfq(ctx, message.rfqId!);
+  const companyProviderId = message.companyProviderId!;
   const at = now();
-  const { quote: body, aiCall } = await extractQuote({ message, at });
 
   // A later quotation from the same provider is a new version, not a replacement.
-  const previousVersion = latestQuoteVersion(rfq.id, message.companyProviderId);
+  const previousVersion = latestQuoteVersion(rfq.id, companyProviderId);
   const previous =
     previousVersion > 0
       ? (listQuotes(ctx, rfq.id).find(
-          (q) => q.companyProviderId === message.companyProviderId && q.version === previousVersion,
+          (q) => q.companyProviderId === companyProviderId && q.version === previousVersion,
         ) ?? null)
       : null;
 
@@ -210,7 +234,7 @@ export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage):
     id: newId('q'),
     companyId: rfq.companyId,
     rfqId: rfq.id,
-    companyProviderId: message.companyProviderId,
+    companyProviderId,
     version: previousVersion + 1,
     supersedesQuoteId: previous?.id ?? null,
     createdAt: at,
@@ -221,7 +245,7 @@ export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage):
     updateQuote({ ...previous, status: 'superseded' });
   }
 
-  const recipient = findRecipient(rfq.id, message.companyProviderId);
+  const recipient = findRecipient(rfq.id, companyProviderId);
   if (recipient) {
     updateRecipient({
       ...recipient,
@@ -230,7 +254,7 @@ export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage):
     });
   }
 
-  const providerName = getCompanyProvider(ctx, message.companyProviderId).provider.name;
+  const providerName = getCompanyProvider(ctx, companyProviderId).provider.name;
   audit(ctx, {
     companyId: rfq.companyId,
     action: quote.version > 1 ? 'quote.revised' : 'quote.received',
@@ -247,6 +271,12 @@ export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage):
   });
 
   return quote;
+}
+
+/** Extracts and records a quotation from an already-matched message, atomically. */
+export async function createQuoteFromMessage(ctx: Ctx, message: InboundMessage): Promise<Quote> {
+  const extracted = await extractFor(ctx, message);
+  return tx(() => commitQuote(ctx, message, extracted));
 }
 
 /** A human resolving an ambiguous or unmatched reply. */
@@ -284,16 +314,20 @@ export async function assignMessage(
     reviewedBy: ctx.user.id,
     reviewedAt: at,
   };
-  updateInbound(updated);
 
-  audit(ctx, {
-    companyId: rfq.companyId,
-    action: 'inbox.assigned',
-    subject: `rfq:${rfq.id}`,
-    summary: `${ctx.user.name} attached the reply from ${message.fromEmail} to ${rfq.reference} as ${view.provider.name}.`,
+  // As on collection: read first, then attach and record in one transaction, so
+  // a failed read leaves the reply in the review queue to try again.
+  const extracted = await extractFor(ctx, updated);
+  const quote = tx(() => {
+    updateInbound(updated);
+    audit(ctx, {
+      companyId: rfq.companyId,
+      action: 'inbox.assigned',
+      subject: `rfq:${rfq.id}`,
+      summary: `${ctx.user.name} attached the reply from ${message.fromEmail} to ${rfq.reference} as ${view.provider.name}.`,
+    });
+    return commitQuote(ctx, updated, extracted);
   });
-
-  const quote = await createQuoteFromMessage(ctx, updated);
   return { message: updated, quote, note: null };
 }
 
