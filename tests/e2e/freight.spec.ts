@@ -20,32 +20,57 @@ const DEMO_PASSWORD = 'FreightDemo2026';
  * Seeding needs a manager unless nobody can sign in yet, so this signs in first
  * when it can. Each test gets a fresh browser context, hence a fresh session.
  */
-async function loadDemo(page: Page, as: RegExp = /Manager/i) {
-  const state = await page.request.get('/api/freight/auth/state');
-  const before = (await state.json()) as { needsSetup?: boolean; demo?: { accounts: { email: string; title: string }[] } };
+async function authMode(page: Page): Promise<'demo' | 'password' | 'entra'> {
+  const res = await page.request.get('/api/freight/state');
+  const body = (await res.json()) as { auth?: { mode?: 'demo' | 'password' | 'entra' } };
+  return body.auth?.mode ?? 'demo';
+}
 
-  if (!before.needsSetup) {
-    const existing = before.demo?.accounts ?? [];
-    const manager = existing.find((a) => /Manager/i.test(a.title)) ?? existing[0];
-    if (manager) {
-      await page.request.post('/api/freight/auth/login', {
-        data: { email: manager.email, password: DEMO_PASSWORD },
-      });
+/**
+ * Loads the demonstration dataset and becomes `as`.
+ *
+ * Works in both modes the suite can meet. In demo mode there is no sign-in and
+ * the person is chosen with the picker; in password mode it signs in, and
+ * seeding needs a manager first. Each test gets a fresh browser context, hence
+ * a fresh session.
+ */
+async function loadDemo(page: Page, as: RegExp = /Manager/i) {
+  const mode = await authMode(page);
+
+  if (mode === 'password') {
+    const state = await page.request.get('/api/freight/auth/state');
+    const before = (await state.json()) as {
+      needsSetup?: boolean;
+      demo?: { accounts: { email: string; title: string }[] };
+    };
+    if (!before.needsSetup) {
+      const manager = (before.demo?.accounts ?? []).find((a) => /Manager/i.test(a.title));
+      if (manager) {
+        await page.request.post('/api/freight/auth/login', {
+          data: { email: manager.email, password: DEMO_PASSWORD },
+        });
+      }
     }
   }
 
   const seeded = await page.request.post('/api/freight/demo');
   expect(seeded.ok(), `seed failed: ${seeded.status()} ${await seeded.text()}`).toBeTruthy();
 
-  // Seeding replaced every account, so sign in again as whoever this test wants.
-  const after = await page.request.get('/api/freight/auth/state');
-  const accounts = ((await after.json()) as { demo?: { accounts: { email: string; title: string; name: string }[] } })
-    .demo?.accounts ?? [];
-  const who = accounts.find((a) => as.test(a.title) || as.test(a.name)) ?? accounts[0];
-  const login = await page.request.post('/api/freight/auth/login', {
-    data: { email: who.email, password: DEMO_PASSWORD },
-  });
-  expect(login.ok()).toBeTruthy();
+  // Seeding replaced every account, so become whoever this test wants.
+  const after = await page.request.get('/api/freight/state');
+  const users = ((await after.json()) as { users?: { id: string; email: string; title: string; name: string }[] })
+    .users ?? [];
+  const who = users.find((u) => as.test(u.title) || as.test(u.name)) ?? users[0];
+
+  if (mode === 'password') {
+    const login = await page.request.post('/api/freight/auth/login', {
+      data: { email: who.email, password: DEMO_PASSWORD },
+    });
+    expect(login.ok(), `sign-in failed: ${await login.text()}`).toBeTruthy();
+  } else if (who) {
+    const switched = await page.request.post('/api/freight/state', { data: { userId: who.id } });
+    expect(switched.ok(), `switch failed: ${await switched.text()}`).toBeTruthy();
+  }
 
   await page.goto('/freight');
   await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
@@ -257,6 +282,28 @@ test.describe('freight workspace', () => {
 });
 
 test.describe('authentication', () => {
+  /*
+   * These exercise password mode in a browser, and they need both password mode
+   * and a seeded workspace. Those two cannot be had in one run of this suite:
+   * seeding is deliberately refused once sign-in is on, and the mode is fixed
+   * when the server boots. So they skip unless the server was started in
+   * password mode against a workspace that already holds the demo data.
+   *
+   * To run them:
+   *   npm start                       # demo mode, press Load demo data
+   *   AUTH_MODE=password npm start    # restart, then point the suite at it
+   *
+   * Password sign-in itself is covered without a browser by the 25 tests in
+   * tests/auth-password.test.ts and the password-mode run of scripts/journey.mjs.
+   */
+  test.beforeEach(async ({ page }) => {
+    const mode = await authMode(page);
+    test.skip(mode !== 'password', `server is in ${mode} mode`);
+    const res = await page.request.get('/api/freight/auth/state');
+    const body = (await res.json()) as { demo?: { accounts: unknown[] } };
+    test.skip((body.demo?.accounts ?? []).length === 0, 'workspace has no demo accounts to sign in with');
+  });
+
   test('an unauthenticated visitor is sent to sign in', async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/freight');

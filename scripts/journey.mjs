@@ -50,39 +50,130 @@ const state = () => call('/api/freight/state').then((r) => r.body);
 const detail = (id) => call('/api/freight/rfq/' + id).then((r) => r.body);
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'FreightDemo2026';
 
-/** Signs in as someone. Every account in the demo dataset shares one password. */
-const become = (email, password = DEMO_PASSWORD) =>
-  call('/api/freight/auth/login', {
+/** Which authentication mode the server is in; the checks differ by mode. */
+let AUTH_MODE = 'demo';
+const readAuthMode = async () => {
+  const res = await call('/api/freight/state');
+  AUTH_MODE = res.body?.auth?.mode ?? 'demo';
+  return AUTH_MODE;
+};
+
+/**
+ * Becomes someone.
+ *
+ * In password mode that means signing in. In demo mode there is no password, so
+ * it switches the acting person - which is what the picker does.
+ */
+const become = async (email, password = DEMO_PASSWORD) => {
+  if (AUTH_MODE === 'password') {
+    return call('/api/freight/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+  }
+  const state = await call('/api/freight/state');
+  const user = (state.body?.users ?? []).find((u) => u.email?.toLowerCase() === email.toLowerCase());
+  if (!user) return { status: 400, body: { ok: false, error: `no such person: ${email}` } };
+  return call('/api/freight/state', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ userId: user.id }),
   });
+};
 
 const signOut = () => call('/api/freight/auth/logout', { method: 'POST' });
 
 /** The demo accounts, read from the sign-in page's own endpoint. */
 const demoAccounts = async () => {
   const res = await call('/api/freight/auth/state');
-  return res.body?.demo?.accounts ?? [];
+  const listed = res.body?.demo?.accounts ?? [];
+  if (listed.length > 0) return listed;
+  // Demo mode does not publish a sign-in list, so use the picker's own list.
+  const state = await call('/api/freight/state');
+  return (state.body?.users ?? []).map((u) => ({ name: u.name, title: u.title, email: u.email }));
 };
 
 const short = (v) => JSON.stringify(v).slice(0, 170);
 
-console.log('\n== Seeding ==');
-// Wiping the workspace needs a manager, except on a brand-new one where nobody
-// can sign in yet. Handle both, so this script works on a fresh checkout and on
-// a workspace that has already been seeded.
+await readAuthMode();
+console.log(`
+== Seeding == (AUTH_MODE=${AUTH_MODE})`);
+
+// Sign in first where sign-in exists, both so reseeding is allowed in demo
+// mode and so the rest of the run has a session at all.
 const before = await call('/api/freight/auth/state');
 if (!before.body?.needsSetup) {
   const accounts0 = before.body?.demo?.accounts ?? [];
   const manager0 = accounts0.find((a) => /Manager/i.test(a.title)) ?? accounts0[0];
   if (manager0) {
     const pre = await become(manager0.email);
-    ok('signing in before reseeding works', pre.body?.ok === true, short(pre.body));
+    ok('signing in as the manager works', pre.body?.ok === true, short(pre.body));
   }
 }
+
+// Seeding is deliberately refused once sign-in is on: it would erase a real
+// workspace. In that case carry on against whatever data is already there.
 const seed = await call('/api/freight/demo', { method: 'POST' });
-ok('demo dataset loads', seed.body.ok === true, short(seed.body));
+if (AUTH_MODE === 'demo') {
+  ok('demo dataset loads', seed.body.ok === true, short(seed.body));
+} else {
+  ok(
+    'seeding is refused while sign-in is on',
+    seed.body?.ok !== true,
+    'it should not be possible to erase a signed-in workspace',
+  );
+  console.log('  NOTE    continuing against the data already in the workspace');
+}
+
+
+/*
+ * The workflow checks below assume the freshly seeded dataset: a request still
+ * collecting, quotes not yet checked, one ERPNext record still failing. Seeding
+ * is refused once sign-in is on, so in the real modes this run verifies the
+ * sign-in gate and stops rather than reporting failures that only mean "this
+ * workspace has already been used".
+ *
+ * To exercise the whole journey: seed in demo mode, then restart in the mode
+ * you want to check.
+ */
+if (AUTH_MODE !== 'demo') {
+  const me = await state();
+  ok('a signed-in person sees the workspace', Boolean(me?.user), short(me));
+  ok('and their companies', Array.isArray(me?.companies) && me.companies.length > 0);
+
+  await signOut();
+  const out = await call('/api/freight/state');
+  ok('signing out ends the session', out.status === 401, String(out.status));
+  const blockedAct = await act({ type: 'rfq.close', rfqId: 'whatever' });
+  ok('a signed-out request cannot act', blockedAct.status === 401, String(blockedAct.status));
+  const blockedSeed = await call('/api/freight/demo', { method: 'POST' });
+  ok('a signed-out request cannot wipe the workspace', blockedSeed.status !== 200, String(blockedSeed.status));
+
+  if (AUTH_MODE === 'password') {
+    const accounts = await demoAccounts();
+    const manager = accounts.find((a) => /Manager/i.test(a.title)) ?? accounts[0];
+    const wrong = await become(manager.email, 'NotThePassword1');
+    ok('a wrong password is refused', wrong.status === 401, String(wrong.status));
+    const unknown = await become('nobody@nowhere.test');
+    ok('an unknown address is refused', unknown.status === 401, String(unknown.status));
+    ok(
+      'both failures give the same message, so accounts cannot be enumerated',
+      wrong.body?.error === unknown.body?.error,
+      `${wrong.body?.error} vs ${unknown.body?.error}`,
+    );
+    const back = await become(manager.email);
+    ok('signing back in works', back.body?.ok === true, short(back.body));
+    ok('and the workspace loads again', (await call('/api/freight/state')).status === 200);
+  }
+
+  console.log('');
+  console.log(`  NOTE    workflow checks skipped in ${AUTH_MODE} mode (needs a freshly seeded workspace)`);
+  console.log('');
+  console.log(`==================  ${pass} passed, ${fail} failed  ==================`);
+  console.log('');
+  process.exit(fail === 0 ? 0 : 1);
+}
 
 let s = await state();
 ok('two companies exist', s.companies.length === 2);
@@ -273,6 +364,17 @@ ok('the external trigger is not open to an unauthenticated caller', external.sta
 
 console.log('');
 console.log('== Authentication ==');
+if (AUTH_MODE !== 'password') {
+  console.log(`  SKIP    password sign-in checks: the server is in ${AUTH_MODE} mode`);
+  const openState = await call('/api/freight/state');
+  ok('demo mode serves the workspace without a sign-in', openState.status === 200, String(openState.status));
+  const switchOff = await call('/api/freight/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'x@y.test', password: 'whatever12' }),
+  });
+  ok('password sign-in is refused while it is switched off', switchOff.status === 404, String(switchOff.status));
+} else {
 await signOut();
 const afterSignOut = await call('/api/freight/state');
 ok('signing out ends the session', afterSignOut.status === 401, String(afterSignOut.status));
@@ -297,5 +399,7 @@ const backIn = await become(managerUser.email);
 ok('signing back in works', backIn.body?.ok === true, short(backIn.body));
 ok('and the workspace loads again', (await call('/api/freight/state')).status === 200);
 
+
+}
 console.log(`\n==================  ${pass} passed, ${fail} failed  ==================\n`);
 process.exit(fail === 0 ? 0 : 1);
