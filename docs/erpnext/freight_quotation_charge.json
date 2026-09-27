@@ -1,0 +1,56 @@
+{
+  "doctype": "DocType",
+  "name": "Freight Quotation Charge",
+  "module": "Freight",
+  "custom": 1,
+  "istable": 1,
+  "editable_grid": 1,
+  "fields": [
+    {
+      "fieldname": "charge_code",
+      "label": "Code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "reqd": 1
+    },
+    {
+      "fieldname": "charge_label",
+      "label": "Charge",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "amount",
+      "label": "Amount",
+      "fieldtype": "Float",
+      "in_list_view": 1,
+      "precision": "2",
+      "description": "Empty means the provider did not state an amount. It is not zero."
+    },
+    {
+      "fieldname": "currency",
+      "label": "Currency",
+      "fieldtype": "Data",
+      "length": 3
+    },
+    {
+      "fieldname": "basis",
+      "label": "Charged on",
+      "fieldtype": "Select",
+      "options": "per_container\nper_shipment\nper_bl\nper_cbm\nper_tonne\nunknown"
+    },
+    {
+      "fieldname": "confidence",
+      "label": "Confidence",
+      "fieldtype": "Select",
+      "options": "high\nmedium\nlow\nmissing"
+    },
+    {
+      "fieldname": "source_reference",
+      "label": "Read from",
+      "fieldtype": "Data",
+      "read_only": 1
+    }
+  ],
+  "permissions": []
+}

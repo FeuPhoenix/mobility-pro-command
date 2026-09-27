@@ -13,6 +13,7 @@ import {
   quotationFieldNames,
   QUOTATION_CHARGE_FIELDS,
 } from '@/freight/adapters/erpquotation';
+import { readFileSync } from 'node:fs';
 import { parentDoctype, childDoctype } from '../scripts/erpnext/freight-quotation-doctype.mjs';
 import type { Company, Quote, Rfq, Surcharge } from '@/freight/types';
 
@@ -188,5 +189,21 @@ describe('the proposed DocType holds everything written', () => {
     const base = parent.fields.find((f) => f.fieldname === 'base_freight');
     expect(base?.reqd).toBeUndefined();
     expect(base?.default).toBeUndefined();
+  });
+});
+
+describe('the definitions handed to their team', () => {
+  const emitted = (file: string) =>
+    JSON.parse(readFileSync(`docs/erpnext/${file}.json`, 'utf8')) as { fields: { fieldname: string }[] };
+
+  // They build the DocType from these files, so a stale copy would be built
+  // wrong and would silently drop whatever it is missing.
+  it('match the definitions, so nobody builds a stale DocType', () => {
+    expect(emitted('freight_quotation')).toEqual(
+      JSON.parse(JSON.stringify(parentDoctype({ module: 'Freight', supplierLink: true }))),
+    );
+    expect(emitted('freight_quotation_charge')).toEqual(
+      JSON.parse(JSON.stringify(childDoctype({ module: 'Freight' }))),
+    );
   });
 });
