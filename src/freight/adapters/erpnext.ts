@@ -147,6 +147,24 @@ interface LiveConfig {
   apiKey: string;
   apiSecret: string;
   doctype: string | null;
+  /** Company code here -> exact Company name in ERPNext. Missing codes use the name. */
+  companyMap: Record<string, string>;
+}
+
+/** ERPNEXT_COMPANY_MAP, e.g. {"MPD":"Mobility Pro Distribution S.A.E."}. */
+export function companyMap(): { map: Record<string, string>; error: string | null } {
+  const raw = process.env.ERPNEXT_COMPANY_MAP;
+  if (!raw) return { map: {}, error: null };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      && Object.values(parsed).every((v) => typeof v === 'string')) {
+      return { map: parsed as Record<string, string>, error: null };
+    }
+  } catch {
+    /* reported below */
+  }
+  return { map: {}, error: 'ERPNEXT_COMPANY_MAP is not a JSON object of company code to ERPNext Company name.' };
 }
 
 export function liveConfig(): { config: LiveConfig | null; missing: string[] } {
@@ -157,6 +175,8 @@ export function liveConfig(): { config: LiveConfig | null; missing: string[] } {
   if (!baseUrl) missing.push('ERPNEXT_BASE_URL');
   if (!apiKey) missing.push('ERPNEXT_API_KEY');
   if (!apiSecret) missing.push('ERPNEXT_API_SECRET');
+  const companies = companyMap();
+  if (companies.error) missing.push(companies.error);
   if (missing.length > 0) return { config: null, missing };
   return {
     config: {
@@ -164,6 +184,7 @@ export function liveConfig(): { config: LiveConfig | null; missing: string[] } {
       apiKey: apiKey!,
       apiSecret: apiSecret!,
       doctype: process.env.ERPNEXT_DOCTYPE || null,
+      companyMap: companies.map,
     },
     missing: [],
   };
@@ -216,17 +237,115 @@ export function erpPayload(input: ErpRecordInput): Record<string, unknown> {
   };
 }
 
+/** Fields the child table must have, from the `offers` rows of `erpPayload()`. */
+const OFFER_FIELDS = [
+  'provider',
+  'quote_version',
+  'comparable',
+  'total_quote_currency',
+  'quote_currency',
+  'total_base_currency',
+  'transit_days',
+  'free_days',
+  'valid_until',
+  'rank',
+  'score',
+];
+
+interface DocField {
+  fieldname: string;
+  fieldtype: string;
+  options?: string | null;
+  unique?: number;
+}
+
+/**
+ * Checks the destination can hold everything `erpPayload()` writes.
+ *
+ * Frappe silently drops fields a DocType does not have, so without this a
+ * write could "succeed" while losing the recommendation or the offers. And the
+ * idempotency key must carry a unique index: the lookup-then-write is not
+ * atomic, so the index is the real guard against two retries both inserting.
+ * Returns the problems found, in plain language; empty means safe to write.
+ */
+export function destinationProblems(
+  doctype: string,
+  parentFields: DocField[],
+  childFields: DocField[] | null,
+  childDoctype: string | null,
+): string[] {
+  const problems: string[] = [];
+  const byName = new Map(parentFields.map((f) => [f.fieldname, f]));
+
+  const key = byName.get('freight_idempotency_key');
+  if (!key) {
+    problems.push(`"${doctype}" has no freight_idempotency_key field, so a retry could create a duplicate. Add it as a Data field marked Unique.`);
+  } else if (!key.unique) {
+    problems.push(`freight_idempotency_key on "${doctype}" is not marked Unique. Mark it Unique so ERPNext itself refuses a duplicate.`);
+  }
+
+  const payloadFields = Object.keys(erpPayload(EMPTY_INPUT)).filter(
+    (k) => k !== 'offers' && k !== 'freight_idempotency_key',
+  );
+  const missing = payloadFields.filter((k) => !byName.has(k));
+  if (missing.length > 0) {
+    problems.push(`"${doctype}" is missing ${missing.length} field${missing.length === 1 ? '' : 's'} this application writes, which ERPNext would silently drop: ${missing.join(', ')}.`);
+  }
+
+  const offers = byName.get('offers');
+  if (!offers || offers.fieldtype !== 'Table') {
+    problems.push(`"${doctype}" has no "offers" child table, so the individual offers would be lost.`);
+  } else if (!childFields) {
+    problems.push(`The child table "${childDoctype ?? offers.options}" behind "offers" could not be read.`);
+  } else {
+    const childNames = new Set(childFields.map((f) => f.fieldname));
+    const childMissing = OFFER_FIELDS.filter((f) => !childNames.has(f));
+    if (childMissing.length > 0) {
+      problems.push(`The "${childDoctype}" child table is missing: ${childMissing.join(', ')}.`);
+    }
+  }
+  return problems;
+}
+
+/** A payload skeleton, used only to read the field names `erpPayload()` writes. */
+const EMPTY_INPUT = {
+  idempotencyKey: '',
+  company: { code: '', name: '' },
+  rfq: { reference: '', originPort: '', destinationPort: '', incoterm: '' },
+  comparison: {
+    lines: [],
+    recommendedQuoteId: null,
+    cheapestQuoteId: null,
+    criteria: { baseCurrency: '' },
+    recommendationReasons: [],
+    recommendationTradeoffs: [],
+    blockedNotes: [],
+    fxRates: [],
+  },
+  providerNames: {},
+  workbook: null,
+  comparisonDate: '',
+} as unknown as ErpRecordInput;
+
 export class LiveErp implements ErpAdapter {
   private lastProbe: ErpStatus | null = null;
 
-  constructor(private readonly cfg: LiveConfig) {}
+  constructor(
+    private readonly cfg: LiveConfig,
+    /** Injected so tests can fake Frappe without touching the network. */
+    private readonly http: typeof fetch = fetch,
+  ) {}
 
-  private headers(): Record<string, string> {
+  private headers(json = true): Record<string, string> {
     return {
       authorization: `token ${this.cfg.apiKey}:${this.cfg.apiSecret}`,
-      'content-type': 'application/json',
       accept: 'application/json',
+      ...(json ? { 'content-type': 'application/json' } : {}),
     };
+  }
+
+  private resource(doctype: string, name?: string): string {
+    return `${this.cfg.baseUrl}/api/resource/${encodeURIComponent(doctype)}${name ? `/${encodeURIComponent(name)}` : ''}`;
   }
 
   status(): ErpStatus {
@@ -235,7 +354,7 @@ export class LiveErp implements ErpAdapter {
       label: 'ERPNext configured (not yet checked)',
       kind: 'live',
       connected: false,
-      detail: `Configured for ${this.cfg.baseUrl}. The connection has not been checked in this session, so it is not described as connected.`,
+      detail: `Configured for ${this.cfg.baseUrl}. The connection has not been checked, so it is not described as connected.`,
       setupRequirements: this.cfg.doctype
         ? []
         : ['Set ERPNEXT_DOCTYPE once the destination DocType has been agreed on the client instance.'],
@@ -244,7 +363,7 @@ export class LiveErp implements ErpAdapter {
 
   async probe(): Promise<ErpStatus> {
     try {
-      const res = await fetch(`${this.cfg.baseUrl}/api/method/frappe.auth.get_logged_user`, {
+      const res = await this.http(`${this.cfg.baseUrl}/api/method/frappe.auth.get_logged_user`, {
         headers: this.headers(),
       });
       if (!res.ok) {
@@ -261,33 +380,25 @@ export class LiveErp implements ErpAdapter {
         return this.lastProbe;
       }
 
-      // Confirm the destination exists rather than assuming it.
-      const requirements: string[] = [];
-      let doctypeOk = false;
+      // Confirm the destination can hold the record rather than assuming it.
+      let requirements: string[];
       if (!this.cfg.doctype) {
-        requirements.push(
+        requirements = [
           'ERPNEXT_DOCTYPE is not set. Inspect the client instance and agree the destination DocType before any write is attempted.',
-        );
+        ];
       } else {
-        const meta = await fetch(
-          `${this.cfg.baseUrl}/api/resource/DocType/${encodeURIComponent(this.cfg.doctype)}`,
-          { headers: this.headers() },
-        );
-        if (meta.ok) doctypeOk = true;
-        else
-          requirements.push(
-            `The DocType "${this.cfg.doctype}" was not found on this instance (${meta.status}). Create it, or point ERPNEXT_DOCTYPE at the agreed destination.`,
-          );
+        requirements = await this.checkDestination(this.cfg.doctype);
       }
+      const ready = Boolean(this.cfg.doctype) && requirements.length === 0;
 
       const version = await this.readVersion();
       this.lastProbe = {
-        label: doctypeOk ? 'ERPNext connected' : 'ERPNext connected, destination not confirmed',
+        label: ready ? 'ERPNext connected' : 'ERPNext connected, destination not ready',
         kind: 'live',
         connected: true,
-        detail: doctypeOk
-          ? `Connected to ${this.cfg.baseUrl}. Comparison outcomes will be written to "${this.cfg.doctype}".`
-          : `Connected to ${this.cfg.baseUrl}, but the destination DocType has not been confirmed, so no write will be attempted.`,
+        detail: ready
+          ? `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}. Comparison outcomes will be written to "${this.cfg.doctype}".`
+          : `Connected to ${this.cfg.baseUrl}${version ? ` (ERPNext ${version})` : ''}, but the destination is not ready, so no write will be attempted.`,
         setupRequirements: requirements,
         version: version ?? undefined,
         lastProbedAt: new Date().toISOString(),
@@ -306,9 +417,27 @@ export class LiveErp implements ErpAdapter {
     }
   }
 
+  /** Reads the destination's definition and reports what would stop a safe write. */
+  private async checkDestination(doctype: string): Promise<string[]> {
+    const meta = await this.http(this.resource('DocType', doctype), { headers: this.headers() });
+    if (!meta.ok) {
+      return [
+        `The DocType "${doctype}" was not found on this instance (${meta.status}). Create it (scripts/erpnext-create-doctype.mjs creates the proposed one), or point ERPNEXT_DOCTYPE at the agreed destination.`,
+      ];
+    }
+    const parent = ((await meta.json()) as { data?: { fields?: DocField[] } }).data?.fields ?? [];
+    const table = parent.find((f) => f.fieldname === 'offers' && f.fieldtype === 'Table');
+    let child: DocField[] | null = null;
+    if (table?.options) {
+      const childMeta = await this.http(this.resource('DocType', table.options), { headers: this.headers() });
+      if (childMeta.ok) child = ((await childMeta.json()) as { data?: { fields?: DocField[] } }).data?.fields ?? [];
+    }
+    return destinationProblems(doctype, parent, child, table?.options ?? null);
+  }
+
   private async readVersion(): Promise<string | null> {
     try {
-      const res = await fetch(`${this.cfg.baseUrl}/api/method/frappe.utils.change_log.get_versions`, {
+      const res = await this.http(`${this.cfg.baseUrl}/api/method/frappe.utils.change_log.get_versions`, {
         headers: this.headers(),
       });
       if (!res.ok) return null;
@@ -330,53 +459,55 @@ export class LiveErp implements ErpAdapter {
         ],
       );
     }
-
     const doctype = this.cfg.doctype;
-    const payload = erpPayload(input);
 
-    // Idempotency: look for an existing document with this key first.
-    let existingName: string | null = null;
-    try {
-      const filters = encodeURIComponent(
-        JSON.stringify([['freight_idempotency_key', '=', input.idempotencyKey]]),
-      );
-      const found = await fetch(
-        `${this.cfg.baseUrl}/api/resource/${encodeURIComponent(doctype)}?filters=${filters}&limit_page_length=1`,
-        { headers: this.headers() },
-      );
-      if (found.ok) {
-        const data = (await found.json()) as { data?: { name: string }[] };
-        existingName = data.data?.[0]?.name ?? null;
-      }
-    } catch {
-      // A failed lookup is not fatal; the insert below is still attempted, and
-      // a unique index on the key in ERPNext is the backstop.
-    }
-
-    const url = existingName
-      ? `${this.cfg.baseUrl}/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(existingName)}`
-      : `${this.cfg.baseUrl}/api/resource/${encodeURIComponent(doctype)}`;
-
-    const res = await fetch(url, {
-      method: existingName ? 'PUT' : 'POST',
-      headers: this.headers(),
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as { exception?: string; _server_messages?: string };
-      const retryable = res.status === 429 || res.status >= 500;
+    // The guard: verify the destination on every write, not just once. A field
+    // removed in ERPNext after setup must stop the write, not lose data.
+    const problems = await this.guarded('read the destination DocType', () => this.checkDestination(doctype));
+    if (problems.length > 0) {
       throw new ErpFailure(
-        `ERPNext refused the write (${res.status})${body.exception ? `: ${body.exception}` : ''}.`,
-        retryable,
-        res.status === 403
-          ? ['Grant the API user create and write permission on the destination DocType.']
-          : [],
+        `The ERPNext destination "${doctype}" is not ready, so nothing was written.`,
+        false,
+        problems,
       );
     }
+
+    const payload = {
+      ...erpPayload(input),
+      company: this.cfg.companyMap[input.company.code] ?? input.company.name,
+    };
+    let existingName = await this.findExisting(doctype, input.idempotencyKey);
+    let updatedExisting = existingName !== null;
+
+    let res = await this.guarded('write the record', () =>
+      this.http(existingName ? this.resource(doctype, existingName) : this.resource(doctype), {
+        method: existingName ? 'PUT' : 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    // Two retries raced, and the other one inserted first: ERPNext's unique
+    // index refused the second insert. Update the record that won instead.
+    if (!existingName && (await isDuplicate(res))) {
+      existingName = await this.findExisting(doctype, input.idempotencyKey);
+      if (!existingName) {
+        throw new ErpFailure('ERPNext reported a duplicate, but the existing record could not be found. Retry shortly.', true);
+      }
+      updatedExisting = true;
+      res = await this.guarded('update the existing record', () =>
+        this.http(this.resource(doctype, existingName!), {
+          method: 'PUT',
+          headers: this.headers(),
+          body: JSON.stringify(payload),
+        }),
+      );
+    }
+
+    if (!res.ok) throw await refusal(res);
 
     const data = (await res.json()) as { data?: { name?: string } };
-    const remoteName = data.data?.name ?? input.idempotencyKey;
+    const remoteName = data.data?.name ?? existingName ?? input.idempotencyKey;
 
     if (input.workbook) await this.attach(doctype, remoteName, input.workbook);
 
@@ -385,16 +516,52 @@ export class LiveErp implements ErpAdapter {
       remoteName,
       remoteUrl: `${this.cfg.baseUrl}/app/${doctype.toLowerCase().replace(/\s+/g, '-')}/${encodeURIComponent(remoteName)}`,
       simulated: false,
-      updatedExisting: existingName !== null,
+      updatedExisting,
     };
   }
 
-  /** Attaches the comparison workbook to the created document. */
+  /**
+   * The existing record with this key, if any.
+   *
+   * A failed lookup stops the write. Inserting blind after a failed lookup is
+   * exactly how a retry creates a duplicate.
+   */
+  private async findExisting(doctype: string, key: string): Promise<string | null> {
+    const filters = encodeURIComponent(JSON.stringify([['freight_idempotency_key', '=', key]]));
+    const found = await this.guarded('check for an existing record', () =>
+      this.http(`${this.resource(doctype)}?filters=${filters}&limit_page_length=1`, { headers: this.headers() }),
+    );
+    if (!found.ok) {
+      throw new ErpFailure(
+        `Could not check ERPNext for an existing record (${found.status}), so nothing was written, to avoid a duplicate. Retry shortly.`,
+        found.status === 429 || found.status >= 500,
+      );
+    }
+    const data = (await found.json()) as { data?: { name: string }[] };
+    return data.data?.[0]?.name ?? null;
+  }
+
+  /** Attaches the workbook once. A retry that finds it already attached skips it. */
   private async attach(
     doctype: string,
     name: string,
     workbook: { filename: string; content: Buffer },
   ): Promise<void> {
+    const filters = encodeURIComponent(
+      JSON.stringify([
+        ['attached_to_doctype', '=', doctype],
+        ['attached_to_name', '=', name],
+        ['file_name', '=', workbook.filename],
+      ]),
+    );
+    const existing = await this.http(`${this.resource('File')}?filters=${filters}&limit_page_length=1`, {
+      headers: this.headers(),
+    }).catch(() => null);
+    if (existing?.ok) {
+      const data = (await existing.json()) as { data?: unknown[] };
+      if ((data.data?.length ?? 0) > 0) return;
+    }
+
     const form = new FormData();
     form.append('doctype', doctype);
     form.append('docname', name);
@@ -406,23 +573,56 @@ export class LiveErp implements ErpAdapter {
       }),
       workbook.filename,
     );
-    const res = await fetch(`${this.cfg.baseUrl}/api/method/upload_file`, {
+    const res = await this.http(`${this.cfg.baseUrl}/api/method/upload_file`, {
       method: 'POST',
-      headers: {
-        authorization: `token ${this.cfg.apiKey}:${this.cfg.apiSecret}`,
-        accept: 'application/json',
-      },
+      headers: this.headers(false),
       body: form,
-    });
-    if (!res.ok) {
-      // The record itself landed; a failed attachment is reported but must not
-      // make the caller think the whole write failed and retry it.
+    }).catch(() => null);
+    if (!res?.ok) {
+      // The record itself landed. A retry updates it (same key) and attaches
+      // the workbook, so retrying is safe.
       throw new ErpFailure(
-        `The comparison record was created as ${name}, but attaching ${workbook.filename} failed (${res.status}). Attach it by hand, or retry.`,
+        `The comparison record was written as ${name}, but attaching ${workbook.filename} failed${res ? ` (${res.status})` : ''}. Retry: the record will be updated, not duplicated, and the workbook attached.`,
         true,
       );
     }
   }
+
+  /** Turns a network failure into a retryable ErpFailure with a plain reason. */
+  private async guarded<T>(what: string, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof ErpFailure) throw err;
+      throw new ErpFailure(
+        `Could not reach ERPNext to ${what}: ${err instanceof Error ? err.message : 'network error'}. Nothing further was written; retry shortly.`,
+        true,
+      );
+    }
+  }
+}
+
+/** Frappe answers a unique-index clash with 409 and a DuplicateEntryError. */
+async function isDuplicate(res: Response): Promise<boolean> {
+  if (res.ok) return false;
+  if (res.status === 409) return true;
+  const body = (await res.clone().json().catch(() => ({}))) as { exc_type?: string; exception?: string };
+  return /DuplicateEntryError/.test(`${body.exc_type ?? ''} ${body.exception ?? ''}`);
+}
+
+async function refusal(res: Response): Promise<ErpFailure> {
+  const body = (await res.json().catch(() => ({}))) as { exception?: string; exc_type?: string; _server_messages?: string };
+  const retryable = res.status === 429 || res.status >= 500;
+  const requirements: string[] = [];
+  if (res.status === 403) requirements.push('Grant the API user create and write permission on the destination DocType, and create on File.');
+  if (/LinkValidationError/.test(`${body.exc_type ?? ''} ${body.exception ?? ''}`)) {
+    requirements.push('A linked record does not exist in ERPNext, most likely the Company. Set ERPNEXT_COMPANY_MAP so each company code maps to the exact ERPNext Company name.');
+  }
+  return new ErpFailure(
+    `ERPNext refused the write (${res.status})${body.exception ? `: ${body.exception}` : ''}.`,
+    retryable,
+    requirements,
+  );
 }
 
 /* -------------------------------- Resolution -------------------------------- */
@@ -448,7 +648,7 @@ export function erpStatusForDisplay(): ErpStatus {
       connected: false,
       detail:
         'ERPNEXT_ADAPTER is set to live, but the credentials are incomplete, so nothing is sent. Outcomes continue to be recorded locally and are labelled as simulated.',
-      setupRequirements: missing.map((k) => `Set ${k}.`),
+      setupRequirements: missing.map((k) => (k.startsWith('ERPNEXT_') && !k.includes(' ') ? `Set ${k}.` : k)),
     };
   }
   return new LiveErp(config).status();

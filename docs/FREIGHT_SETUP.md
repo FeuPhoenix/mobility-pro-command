@@ -157,9 +157,13 @@ downstream workflow behaves identically.
 | `ERPNEXT_BASE_URL` | — | e.g. `https://erp.mobilitypro.com` |
 | `ERPNEXT_API_KEY` / `ERPNEXT_API_SECRET` | — | API keys for a user with permission on the destination DocType |
 | `ERPNEXT_DOCTYPE` | — | The agreed destination. **Deliberately has no default.** |
+| `ERPNEXT_COMPANY_MAP` | — | JSON mapping company codes to exact ERPNext Company names |
 
-The live adapter **refuses to write** until `ERPNEXT_DOCTYPE` names a DocType it
-has confirmed exists on the target instance. ERPNext has no native freight
+The live adapter **refuses to write** until `ERPNEXT_DOCTYPE` names a DocType
+that can hold every field it writes, with the idempotency key marked Unique. It
+checks this before every write; *Check connection* in Settings lists anything
+missing. `scripts/erpnext-create-doctype.mjs` creates the proposed DocType once
+the customer agrees to it. ERPNext has no native freight
 comparison document, so guessing one would either write to the wrong place or
 fail against a schema nobody has seen. See `docs/FREIGHT_ERPNEXT.md` for the
 proposed mapping and the questions that need answering first.

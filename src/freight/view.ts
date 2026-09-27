@@ -412,7 +412,7 @@ export function integrationStatus(): IntegrationStatus {
       externalTrigger: Boolean(process.env.MAILBOX_COLLECT_TOKEN),
       lastRun: lastCollectionRun(),
     },
-    erp: erpStatusForDisplay(),
+    erp: withLastCheck('erp', erpStatusForDisplay()),
     ai: aiStatusForDisplay(),
     demoMode: getSetting<boolean>('demo.mode', false),
   };

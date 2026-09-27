@@ -178,7 +178,7 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('settings.reminders'), afterDays: z.number().int().min(1).max(30), maxRounds: z.number().int().min(0).max(5) }),
 
   z.object({ type: z.literal('mailbox.collect') }),
-  z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox']) }),
+  z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox', 'erp']) }),
 
   z.object({
     type: z.literal('demo.deliverReply'),
