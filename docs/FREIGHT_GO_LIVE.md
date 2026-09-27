@@ -149,9 +149,18 @@ whether it should be reachable on the production address at all.
 
 ## G. Housekeeping on this machine
 
-- `npm ci` reported 6 dependency vulnerabilities (1 critical, 2 high,
-  3 moderate). Run `npm audit` and decide; `npm audit fix --force` can make
-  breaking upgrades, so do not run it blindly.
+- **Dependencies, reviewed 27 September.** Was 6 findings (1 critical, 2 high,
+  3 moderate); now **5 moderate**, after upgrading vitest to 3.2.7 and
+  Playwright to 1.63. What is left, and why it is left:
+  - **vitest / @vitest/mocker** (4 of the 5) — fixed only in vitest 5, a major
+    upgrade. Test tooling: it is not in the production image, which installs
+    with `--omit=dev`. Worth doing on its own, not under time pressure.
+  - **exceljs → uuid** — `npm audit fix` wants to *downgrade* exceljs to 3.4.0,
+    a breaking change, to fix it. The advisory needs a `buf` argument passed to
+    uuid v3/v5/v6; exceljs calls `uuidv4()` with no arguments, so it is not
+    reachable. Leave it.
+
+  Do not run `npm audit fix --force` blindly - here it makes things worse.
 - `git stash list` shows an old `package-lock.json` change (npm metadata only);
   `git stash drop` when you are sure.
 - The local branch `feat/freight-mailbox` duplicates work already on `dev`;
