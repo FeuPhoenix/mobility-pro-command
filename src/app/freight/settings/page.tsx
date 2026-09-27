@@ -248,12 +248,17 @@ function RemindersCard() {
 }
 
 function IntegrationsCard() {
-  const { state } = useFreight();
+  const { state, run, busy } = useFreight();
   const i = state?.integrations;
   if (!i) return null;
 
-  const blocks = [
-    { title: 'Outgoing email', s: i.mail },
+  const blocks: {
+    title: string;
+    s: { label: string; connected: boolean; detail: string; setupRequirements: string[]; lastProbedAt?: string };
+    check?: 'mail' | 'mailbox';
+  }[] = [
+    { title: 'Outgoing email', s: i.mail, check: i.mail.kind === 'graph' ? 'mail' : undefined },
+    { title: 'Incoming email', s: i.mailbox, check: i.mailbox.kind === 'graph' ? 'mailbox' : undefined },
     { title: 'ERPNext', s: i.erp },
     {
       title: 'AI assistance',
@@ -273,9 +278,20 @@ function IntegrationsCard() {
             <div className="row" style={{ gap: 8, alignItems: 'center' }}>
               <strong style={{ fontSize: 13.5 }}>{b.title}</strong>
               <Pill tone={b.s.connected ? 'good' : 'neutral'}>{b.s.connected ? 'Connected' : 'Not connected'}</Pill>
+              {b.check ? (
+                <button
+                  type="button"
+                  className="btn sm"
+                  disabled={busy}
+                  onClick={() => void run({ type: 'connection.check', target: b.check })}
+                >
+                  Check connection
+                </button>
+              ) : null}
             </div>
             <p className="small muted" style={{ marginTop: 4, lineHeight: 1.55 }}>
               {b.s.detail}
+              {b.s.lastProbedAt ? ` Last checked ${new Date(b.s.lastProbedAt).toLocaleString('en-GB')}.` : ''}
             </p>
             {b.s.setupRequirements.length > 0 ? (
               <ul className="small muted" style={{ paddingLeft: 18, marginTop: 5, lineHeight: 1.6 }}>
@@ -287,6 +303,8 @@ function IntegrationsCard() {
           </div>
         ))}
 
+        <CollectionStatus />
+
         {i.demoMode ? (
           <Notice tone="warn" title="This workspace holds demonstration data. ">
             Every company, provider and rate in it is fictional, and every address ends in{' '}
@@ -295,5 +313,47 @@ function IntegrationsCard() {
         ) : null}
       </div>
     </Card>
+  );
+}
+
+function CollectionStatus() {
+  const { state, run, busy } = useFreight();
+  const c = state?.integrations?.collection;
+  if (!c) return null;
+  const last = c.lastRun;
+  const canEdit = state?.user?.role !== 'viewer';
+
+  return (
+    <div>
+      <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+        <strong style={{ fontSize: 13.5 }}>Reply collection</strong>
+        <Pill tone={c.pollSeconds ? 'good' : 'neutral'}>{c.pollSeconds ? 'Scheduled' : 'Not scheduled'}</Pill>
+        {canEdit ? (
+          <button type="button" className="btn sm" disabled={busy} onClick={() => void run({ type: 'mailbox.collect' })}>
+            Collect now
+          </button>
+        ) : null}
+      </div>
+      <p className="small muted" style={{ marginTop: 4, lineHeight: 1.55 }}>
+        {c.pollSeconds
+          ? `The Mailbox Collector checks for new replies every ${c.pollSeconds} seconds.`
+          : 'No schedule is running. Set MAILBOX_POLL_SECONDS on the server to collect replies automatically.'}
+        {c.externalTrigger ? ' An external scheduler may also trigger collection.' : ''} Collection only files
+        replies; it cannot edit, approve or send anything.
+      </p>
+      {last ? (
+        <p className="small muted" style={{ marginTop: 4, lineHeight: 1.55 }} data-testid="last-collection">
+          Last run {new Date(last.finishedAt).toLocaleString('en-GB')} (
+          {last.trigger === 'manual' && last.requestedBy ? `requested by ${last.requestedBy}` : last.trigger}
+          {last.adapter === 'simulated' ? ', simulated mailbox' : ''}):{' '}
+          {last.outcome === 'failed'
+            ? `failed. ${last.error}`
+            : `${last.filed} new, ${last.matched} matched, ${last.needsReview} waiting for a person${last.duplicates > 0 ? `, ${last.duplicates} already collected` : ''}.`}
+          {last.quarantined.length > 0
+            ? ` ${last.quarantined.length} message${last.quarantined.length === 1 ? ' was' : 's were'} set aside after repeated failures; see the activity log.`
+            : ''}
+        </p>
+      ) : null}
+    </div>
   );
 }

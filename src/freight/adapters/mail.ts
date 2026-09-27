@@ -178,8 +178,13 @@ export class GraphTransport implements MailTransport {
   async probe(): Promise<TransportStatus> {
     try {
       const token = await graphToken(this.cfg);
+      // Reads the mailbox's Sent Items folder rather than the user profile:
+      // GET /users/{id} needs User.Read.All, which the setup guide does not ask
+      // for, so it would fail on a correctly configured app. Mail.ReadWrite
+      // covers this call. It proves the token and the mailbox scope; Mail.Send
+      // itself is only proven by the first real send.
       const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.cfg.mailbox)}?$select=mail,displayName`,
+        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.cfg.mailbox)}/mailFolders/sentitems?$select=id`,
         { headers: { authorization: `Bearer ${token}` } },
       );
       if (!res.ok) {
@@ -197,12 +202,11 @@ export class GraphTransport implements MailTransport {
         };
         return this.lastProbe;
       }
-      const who = (await res.json()) as { displayName?: string; mail?: string };
       this.lastProbe = {
         label: 'Microsoft 365 mailbox connected',
         kind: 'graph',
         connected: true,
-        detail: `Connected to ${who.mail ?? this.cfg.mailbox}${who.displayName ? ` (${who.displayName})` : ''}. Approved email will be delivered for real.`,
+        detail: `Connected to ${this.cfg.mailbox}. Approved email will be delivered for real. Permission to send is confirmed by the first send; test with an internal address first.`,
         setupRequirements: [],
         lastProbedAt: new Date().toISOString(),
       };

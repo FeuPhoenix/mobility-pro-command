@@ -51,7 +51,7 @@ this module selects, negotiates or books.
 | Part | What actually happens |
 | --- | --- |
 | Outgoing email | Prepared, approved and recorded exactly as in production, but nothing is transmitted. Marked "Simulated" on every sent email |
-| Inbound mail | The demonstration dataset feeds replies through the real collection pipeline. No mailbox is polled |
+| Inbound mail | Collection is built and can run on a schedule, but by default it reads an empty simulated mailbox. The demonstration dataset feeds replies through the same `ingestMessage()` pipeline |
 | ERPNext | Recorded locally, stored as `adapter: 'simulated'`, rendered as *"Simulated, not in ERPNext"*. It can never be read back as a live write |
 | One ERPNext failure | The demo deliberately fails the first attempt so the retry path is a real failure and a real recovery |
 
@@ -63,17 +63,48 @@ exercised from this environment, and none is claimed as working.
 | Integration | What is missing to verify it |
 | --- | --- |
 | Microsoft Graph `sendMail` | An Entra app registration with `Mail.Send` and admin consent |
+| Microsoft Graph mailbox collection (delta query) | The same app registration with `Mail.ReadWrite`. Tested against a faked Graph only |
 | ERPNext write | A reachable instance **and** an agreed destination DocType |
 | Anthropic prose fallback | An API key; deliberately not used, since paid usage was not authorised |
 
 ### Not built in this phase
 
-- Scheduled inbound mail collection (poll or webhook). The matching, extraction
-  and review code is complete and exercised; only the trigger is missing.
 - Authentication. See the honest statement in `FREIGHT_SETUP.md`.
 - Everything explicitly out of scope: shipment tracking, vessel positions,
   arrival prediction, provider discovery, WhatsApp/WeChat, negotiation,
   booking, a data warehouse.
+
+### Reply collection (added 2026-09-27, W1)
+
+Replies are collected from the shared mailbox by the **Mailbox Collector**, a
+system identity (`src/freight/system.ts`). It is not a user row, so nobody can
+act as it; it can see every company, because one mailbox serves them all, and
+it cannot edit, approve or send. Its entries in the activity log carry its own
+name, never a manager's.
+
+- **Adapter:** `src/freight/adapters/mailbox.ts`, the same shape as
+  `adapters/mail.ts`: `SimulatedMailbox` (default) and `GraphMailbox`, chosen
+  by `MAILBOX_ADAPTER`. Graph uses a delta query on the Inbox, so each run
+  fetches only what is new. It only reads; nothing in the mailbox is changed.
+- **One path in:** `src/freight/service/collect.ts` hands every message to the
+  existing `ingestMessage()`. There is no second ingestion path.
+- **No duplicates:** the saved mailbox position moves forward only after a
+  whole page is filed, and `ingestMessage` skips any message id it has seen.
+  Losing the position entirely just re-reads; nothing is filed twice.
+- **Never overlapping:** a run takes a database lease first.
+- **Never silently lost:** a message that fails to file is retried on the next
+  two runs, then set aside with an audit entry naming its sender and subject.
+- **Triggers:** `MAILBOX_POLL_SECONDS` starts an in-process timer; an external
+  scheduler can `POST /api/freight/collect` with `MAILBOX_COLLECT_TOKEN`; a
+  person can press **Collect now** (Replies, or Settings → Connections).
+- **Connection checks:** Settings → Connections now has *Check connection* for
+  outgoing and incoming email. The result is stored against the configuration
+  it was made for, so changing the tenant, app or mailbox clears it. Before
+  this, nothing ever ran the Graph probe, so "connected" could never appear.
+- **Known limit for W2:** Graph `sendMail` returns no message id, so a reply's
+  `In-Reply-To` cannot be tied to the RFQ email yet. Replies still match on the
+  RFQ reference and the sender, as they do in the demo; looking the id up in
+  Sent Items after sending would add thread matching.
 
 ---
 
@@ -151,9 +182,9 @@ Industrial. The MPD requests disappear, and a direct request for one returns
 
 | Check | Result |
 | --- | --- |
-| `npm test` | **118 passed** (82 pre-existing, 36 new freight) |
-| `npm run test:e2e` | **9 passed** (browser, real Chrome) |
-| `node scripts/journey.mjs` | **54 passed** over HTTP against a running server |
+| `npm test` | **137 passed** (82 operations demo, 36 freight, 19 mailbox collection) |
+| `npm run test:e2e` | **21 passed** (12 operations demo, 9 freight; browser, real Chrome) |
+| `node scripts/journey.mjs` | **61 passed** over HTTP against a running server |
 | `npm run build` | Compiles clean; existing routes unchanged |
 | `npx tsc --noEmit` | Clean |
 
@@ -206,19 +237,24 @@ src/freight/
   db.ts               SQLite schema (node:sqlite, no native build)
   repo.ts             data access; every company-scoped call takes a Ctx
   session.ts          who is acting (the one function authentication replaces)
+  system.ts           the Mailbox Collector, the one non-person identity
+  schedule.ts         the in-process collection timer (off unless configured)
   actions.ts          the single mutation boundary, validated with zod
   view.ts             read models for the screens
   files.ts            attachment storage and validation
   domain/             the rules: comparison, email approval, extraction, matching
   parsers/            deterministic text, Excel and PDF readers
-  adapters/           mail, ERPNext, AI - each with a simulated default
-  service/            orchestration: providers, rfq, mail, inbox, compare, erp
+  adapters/           mail, mailbox, ERPNext, AI - each with a simulated default
+  service/            orchestration: providers, rfq, mail, inbox, collect,
+                      connections, compare, erp
   excel/              comparison workbook and import templates
   demo/               the demonstration dataset, built by running the workflow
   ui/                 client state and shared components
 src/app/freight/      the screens
-src/app/api/freight/  the routes
+src/app/api/freight/  the routes (collect/ is the external scheduler trigger)
+src/instrumentation.ts starts the collection timer when the server starts
 tests/freight.test.ts business-rule tests
+tests/mailbox.test.ts mailbox collection, the collector identity, Graph faked
 tests/e2e/freight.spec.ts browser journeys
 scripts/journey.mjs   end-to-end HTTP check
 ```

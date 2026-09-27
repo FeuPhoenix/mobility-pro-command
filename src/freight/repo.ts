@@ -88,6 +88,9 @@ export function assertCanEdit(ctx: Ctx): void {
   if (ctx.user.role === 'viewer') {
     throw forbidden('Your access is read-only.');
   }
+  if (ctx.user.role === 'system_mailbox_collector') {
+    throw forbidden('The Mailbox Collector only files incoming replies. A person has to make this change.');
+  }
 }
 
 /* --------------------------------- Users ----------------------------------- */
@@ -130,6 +133,14 @@ export function listCompanies(ctx: Ctx): Company[] {
   return (db().prepare('SELECT * FROM companies ORDER BY name').all() as Record<string, unknown>[])
     .map(rowToCompany)
     .filter((c) => ctx.user.companyIds.includes(c.id));
+}
+
+/**
+ * Every company id, ignoring the acting user. Only for the Mailbox Collector,
+ * which files replies from the one shared mailbox on behalf of all companies.
+ */
+export function listAllCompanyIds(): Id[] {
+  return (db().prepare('SELECT id FROM companies ORDER BY id').all() as { id: string }[]).map((r) => r.id);
 }
 
 export function getCompany(ctx: Ctx, id: Id): Company {

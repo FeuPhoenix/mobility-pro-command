@@ -226,5 +226,21 @@ if (pending) {
   ok('a coordinator cannot close collection', denied.status === 403, short(denied.body));
 }
 
+console.log('\n== Mailbox collection ==');
+// Back to the manager: collection is started by a person but runs as the Mailbox Collector.
+const managerUser = seed.body.data.user;
+await become(managerUser.id);
+const collectRun = await act({ type: 'mailbox.collect' });
+ok('a person can ask for a collection run', collectRun.body.ok === true, short(collectRun.body));
+ok('the simulated mailbox says so rather than claiming a real read', /simulated mailbox/i.test(collectRun.body.message ?? ''), collectRun.body.message);
+const afterCollect = await state();
+ok('the incoming mailbox is reported and not described as connected', afterCollect.integrations?.mailbox?.connected === false, short(afterCollect.integrations?.mailbox));
+ok('the last run is recorded with who asked for it', afterCollect.integrations?.collection?.lastRun?.requestedBy === managerUser.name, short(afterCollect.integrations?.collection?.lastRun));
+ok('the Mailbox Collector is not a person anyone can act as', !afterCollect.users.some((u) => u.role === 'system_mailbox_collector'));
+const actAsCollector = await become('system_mailbox_collector');
+ok('switching to the Mailbox Collector is refused', actAsCollector.status === 400, String(actAsCollector.status));
+const external = await call('/api/freight/collect', { method: 'POST', headers: { authorization: 'Bearer guess' } });
+ok('the external trigger is not open to an unauthenticated caller', external.status === 401 || external.status === 404, String(external.status));
+
 console.log(`\n==================  ${pass} passed, ${fail} failed  ==================\n`);
 process.exit(fail === 0 ? 0 : 1);

@@ -79,7 +79,42 @@ Branch: `feat/freight-rfq`. Built 2026-09-26.
 
 - No authentication. The acting person is a demonstration control; see
   `FREIGHT_SETUP.md` for what is built and what replacing it involves.
-- No scheduled inbound mail collection. Matching, extraction and review are
-  complete and exercised; only the trigger is missing.
-- Microsoft Graph, live ERPNext and the AI fallback are written but have **not**
-  been verified against live services from this environment.
+- Microsoft Graph (sending and collection), live ERPNext and the AI fallback are
+  written but have **not** been verified against live services from this
+  environment. Graph collection is tested against a faked Graph only.
+- Graph `sendMail` returns no message id, so replies cannot yet be matched by
+  thread; they match on the RFQ reference and the sender.
+- `ingestMessage()` is not atomic: if quote extraction throws after the message
+  row is written, a later run sees the message as already collected and no
+  quote is created. Rare, but worth closing before live use.
+
+## 2026-09-27 — W1: scheduled reply collection
+
+Branch: `feat/freight-mailbox`. Requires Node 22.5+ (`node:sqlite`).
+
+- [x] Baseline verified on a clean checkout: 118 unit, 9 browser, 54 journey
+- [x] Mailbox Collector system identity (`src/freight/system.ts`): not a user
+      row, cannot be acted as, cannot edit, approve or send; sees every company
+- [x] `adapters/mailbox.ts`: `SimulatedMailbox` and `GraphMailbox` (Inbox
+      delta query, read-only), `resolveMailbox()` on `MAILBOX_ADAPTER`
+- [x] `service/collect.ts`: feeds the existing `ingestMessage()`; cursor moves
+      only after a whole page is filed; database lease against overlap; a
+      failing message is retried twice then set aside with an audit entry
+- [x] Triggers: `MAILBOX_POLL_SECONDS` timer (`src/instrumentation.ts`),
+      `POST /api/freight/collect` with `MAILBOX_COLLECT_TOKEN`, "Collect now"
+- [x] Settings → Connections: incoming email row, reply-collection status,
+      *Check connection* for outgoing and incoming email
+- [x] `.env.example` committed (it was excluded by `.env*` before)
+- [x] Tests: 19 unit (`tests/mailbox.test.ts`), 7 journey checks. Totals now
+      137 unit, 21 browser, 61 journey
+
+Defects found while doing it:
+
+7. **The Graph probe was never called.** Adapters are rebuilt per request and
+   nothing invoked `probe()`, so Settings could never say "connected" — W2's
+   done-condition was unreachable. Checks are now an action and the result is
+   stored against the configuration it was made for.
+8. **The send probe needed a permission the guide does not grant.**
+   `GET /users/{id}` requires `User.Read.All`; the guide grants `Mail.Send` and
+   `Mail.ReadWrite`. The probe now reads Sent Items, which `Mail.ReadWrite`
+   covers.

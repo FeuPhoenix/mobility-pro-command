@@ -41,6 +41,10 @@ import {
 import { approvalIsCurrent } from './domain/email';
 import { uncertainFields } from './domain/extraction';
 import { mailStatusForDisplay } from './adapters/mail';
+import { mailboxStatusForDisplay } from './adapters/mailbox';
+import { withLastCheck } from './service/connections';
+import { lastCollectionRun, type CollectionRun } from './service/collect';
+import { pollSeconds } from './schedule';
 import { erpStatusForDisplay } from './adapters/erpnext';
 import { aiStatusForDisplay } from './adapters/ai';
 import { getSetting } from './db';
@@ -387,6 +391,13 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
 
 export interface IntegrationStatus {
   mail: ReturnType<typeof mailStatusForDisplay>;
+  mailbox: ReturnType<typeof mailboxStatusForDisplay>;
+  collection: {
+    /** Seconds between scheduled runs, or null when no schedule is running. */
+    pollSeconds: number | null;
+    externalTrigger: boolean;
+    lastRun: CollectionRun | null;
+  };
   erp: ReturnType<typeof erpStatusForDisplay>;
   ai: ReturnType<typeof aiStatusForDisplay>;
   demoMode: boolean;
@@ -394,7 +405,13 @@ export interface IntegrationStatus {
 
 export function integrationStatus(): IntegrationStatus {
   return {
-    mail: mailStatusForDisplay(),
+    mail: withLastCheck('mail', mailStatusForDisplay()),
+    mailbox: withLastCheck('mailbox', mailboxStatusForDisplay()),
+    collection: {
+      pollSeconds: pollSeconds(),
+      externalTrigger: Boolean(process.env.MAILBOX_COLLECT_TOKEN),
+      lastRun: lastCollectionRun(),
+    },
     erp: erpStatusForDisplay(),
     ai: aiStatusForDisplay(),
     demoMode: getSetting<boolean>('demo.mode', false),

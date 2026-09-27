@@ -17,7 +17,7 @@ import { useSearchParams } from 'next/navigation';
 import type { InboundMessage } from '@/freight/types';
 
 export default function InboxPage() {
-  const { state } = useFreight();
+  const { state, run, busy } = useFreight();
   const search = useSearchParams();
   const [open, setOpen] = React.useState<string | null>(search.get('message'));
   const [showMatched, setShowMatched] = React.useState(false);
@@ -42,6 +42,11 @@ export default function InboxPage() {
             <input type="checkbox" checked={showMatched} onChange={(e) => setShowMatched(e.target.checked)} />
             Show replies already matched
           </label>
+          {state?.user?.role !== 'viewer' ? (
+            <button type="button" className="btn" disabled={busy} onClick={() => void run({ type: 'mailbox.collect' })}>
+              Collect now
+            </button>
+          ) : null}
         </div>
       </div>
 

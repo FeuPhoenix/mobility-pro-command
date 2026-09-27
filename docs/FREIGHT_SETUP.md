@@ -83,9 +83,11 @@ setup requirement rather than failing.
      -AccessRight RestrictAccess -Description "Mobility Pro Command freight RFQ"
    ```
 4. Set the four variables and `MAIL_ADAPTER=graph`, then restart.
-5. Open **Settings → Connections**. It will say *Microsoft 365 mailbox connected*
-   only after a successful probe. Until then it says "not yet checked", and
-   that is deliberate.
+5. Open **Settings → Connections** and press *Check connection* on *Outgoing
+   email*. It will say *Microsoft 365 mailbox connected* only after that check
+   succeeds. Until then it says "not yet checked", and that is deliberate. The
+   check reads the mailbox's Sent Items with `Mail.ReadWrite`; permission to
+   *send* is only proven by the first real send.
 
 **Not verified live.** The Graph code path is complete but has not been run
 against a real tenant from this environment — no app registration was available.
@@ -93,13 +95,48 @@ Treat the first live send as a test: send one RFQ to an internal address first.
 
 ### Inbound collection
 
-Collecting replies automatically needs a poll or a webhook against the same
-mailbox. The matching, extraction and review code is complete and is exercised
-by every reply in the demonstration dataset; what is **not** built is the
-scheduled fetch. See *Remaining work* in `docs/FREIGHT_HANDOVER.md`.
+Replies are collected from the same mailbox RFQs are sent from, by a system
+identity called the **Mailbox Collector**. It files replies and can do nothing
+else: it cannot edit, approve or send, and nobody can act as it.
 
-In the meantime a reply can be brought in by hand from the request screen, and
-the whole downstream workflow behaves identically.
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `MAILBOX_ADAPTER` | `simulated` | `graph` reads the Inbox of `GRAPH_MAILBOX` with a Graph delta query. Uses the same four `GRAPH_*` variables as sending |
+| `MAILBOX_POLL_SECONDS` | unset (off) | Collect on a timer inside the server, e.g. `120`. Minimum 30 |
+| `MAILBOX_COLLECT_TOKEN` | unset (off) | Lets an external scheduler run collection with `POST /api/freight/collect` and `Authorization: Bearer <token>`. Without it the endpoint is switched off |
+| `MAILBOX_INITIAL_LOOKBACK_HOURS` | `72` | On the very first run, only mail received this recently is collected, so switching collection on does not pour the mailbox's history into the review queue |
+
+**To activate it:**
+
+1. Complete the Graph steps above. `Mail.ReadWrite` is what collection needs;
+   collection only reads and never marks, moves or deletes a message.
+2. Set `MAILBOX_ADAPTER=graph` and either `MAILBOX_POLL_SECONDS` (one
+   long-running server) or `MAILBOX_COLLECT_TOKEN` plus a scheduler (several
+   instances, or a host with its own cron). Restart.
+3. In **Settings → Connections**, press *Check connection* on *Incoming
+   email*. Then press **Collect now** and read the result under *Reply
+   collection*.
+
+What to expect from a run: a reply that quotes its RFQ reference from a known
+sender is matched and its quotation extracted, waiting to be checked. Anything
+ambiguous, or from an address the workspace does not know, lands in
+**Replies** for a person to attach. Running collection again never files a
+message twice. A message that repeatedly fails to file is set aside after three
+attempts, with an entry in the activity log; it is still in the mailbox and can
+be brought in by hand.
+
+The in-process timer suits one long-running Node server. With several
+instances, use one external scheduler instead; a database lease stops two runs
+overlapping either way. A Graph webhook subscription would cut the delay, but
+it needs a public HTTPS endpoint and renewal every few days, so it waits until
+hosting is decided. It would call the same collection service.
+
+**Not verified live.** Tested against a faked Graph, not a real tenant. Use a
+dedicated freight mailbox: every message that arrives in its Inbox is
+collected, and anything unrecognised goes to the review queue.
+
+A reply can still be brought in by hand from the request screen, and the whole
+downstream workflow behaves identically.
 
 ### ERPNext
 

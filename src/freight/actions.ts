@@ -10,7 +10,7 @@
 
 import { z } from 'zod';
 import type { Ctx } from './repo';
-import { FreightError, getCompanyProvider, getRfq, listCompanies } from './repo';
+import { assertCanEdit, FreightError, getCompanyProvider, getRfq, listCompanies } from './repo';
 import {
   addContact,
   commitProviderImport,
@@ -31,6 +31,8 @@ import { approveEmail, editEmail, requestApproval, sendApproved, sendEmail, unap
 import { assignMessage, ingestMessage, markDeclined, reviewQuote } from './service/inbox';
 import { createComparison, prepareComparisonEmail } from './service/compare';
 import { queueSync, runSync } from './service/erp';
+import { collectInbox } from './service/collect';
+import { checkConnection } from './service/connections';
 import { setSetting } from './db';
 
 const lane = z.object({ originPort: z.string().min(2), destinationPort: z.string().min(2) });
@@ -174,6 +176,9 @@ export const ActionSchema = z.discriminatedUnion('type', [
     asOf: z.string(),
   })) }),
   z.object({ type: z.literal('settings.reminders'), afterDays: z.number().int().min(1).max(30), maxRounds: z.number().int().min(0).max(5) }),
+
+  z.object({ type: z.literal('mailbox.collect') }),
+  z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox']) }),
 
   z.object({
     type: z.literal('demo.deliverReply'),
@@ -435,6 +440,31 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
       setSetting('reminders.afterDays', action.afterDays);
       setSetting('reminders.maxRounds', action.maxRounds);
       return { ok: true, message: 'Reminder settings saved.' };
+    }
+
+    case 'mailbox.collect': {
+      // The person only asks for a run. The run itself files mail as the
+      // Mailbox Collector, exactly as the schedule would.
+      assertCanEdit(ctx);
+      const run = await collectInbox({ trigger: 'manual', requestedBy: ctx });
+      if (run.outcome === 'failed') {
+        throw new FreightError(`Collecting replies failed: ${run.error}`, 502, 'collect_failed');
+      }
+      return {
+        ok: true,
+        message:
+          run.outcome === 'skipped'
+            ? (run.error ?? 'Nothing to collect.')
+            : run.filed === 0
+              ? `No new replies${run.adapter === 'simulated' ? ' in the simulated mailbox' : ''}.`
+              : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person.`,
+        data: run,
+      };
+    }
+
+    case 'connection.check': {
+      const status = await checkConnection(ctx, action.target);
+      return { ok: true, message: status.label, data: status };
     }
 
     case 'demo.deliverReply': {

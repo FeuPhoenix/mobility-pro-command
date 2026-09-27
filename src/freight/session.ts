@@ -32,7 +32,8 @@ export async function resolveCtx(): Promise<Ctx> {
 
   if (id) {
     const user = getUser(id);
-    if (user) return { user };
+    // A system identity is never a person a request can act as.
+    if (user && user.role !== 'system_mailbox_collector') return { user };
   }
 
   const all = listUsers();

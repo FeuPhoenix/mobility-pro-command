@@ -14,6 +14,8 @@ brag-output/
 
 .vercel
 .env*
+# The documented example holds no values and must stay tracked.
+!.env.example
 
 # Freight module: the local store and its generated attachments. Both are
 # rebuilt by "Load demo data", so neither belongs in the repository.

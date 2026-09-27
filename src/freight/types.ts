@@ -29,7 +29,13 @@ export type UserRole =
   /** Can prepare work but cannot approve an outbound email. */
   | 'logistics_coordinator'
   /** Read-only. */
-  | 'viewer';
+  | 'viewer'
+  /**
+   * Not a person. The Mailbox Collector files replies from the shared mailbox
+   * into the workspace on a schedule. It is never stored as a user row, so it
+   * cannot be picked as the acting person, and it may not edit, approve or send.
+   */
+  | 'system_mailbox_collector';
 
 export interface User {
   id: Id;
