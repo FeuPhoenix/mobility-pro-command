@@ -45,6 +45,14 @@ export interface User {
   role: UserRole;
   /** Company ids this user may act on. Enforced server-side on every request. */
   companyIds: Id[];
+  /** A disabled person cannot sign in, and an existing session stops working. */
+  disabled?: boolean;
+  /**
+   * The identity provider's immutable id (Entra `oid`), bound at first sign-in.
+   * After that, a sign-in must carry the same id, so renaming someone else's
+   * account to this email address does not grant this person's access.
+   */
+  externalId?: string | null;
 }
 
 /* ------------------------------- Companies --------------------------------- */

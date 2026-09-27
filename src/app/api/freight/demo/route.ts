@@ -4,6 +4,7 @@ import { seedDemo } from '@/freight/demo/seed';
 import { SimulatedErp } from '@/freight/adapters/erpnext';
 import { SimulatedMailbox } from '@/freight/adapters/mailbox';
 import { USER_COOKIE } from '@/freight/session';
+import { authMode } from '@/freight/auth/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,13 @@ export const dynamic = 'force-dynamic';
  * It is destructive by design and is the only endpoint that is.
  */
 export async function POST() {
+  // With real sign-in there is real data. Wiping it is never one click away.
+  if (authMode() !== 'demo') {
+    return NextResponse.json(
+      { ok: false, error: 'Loading the demonstration dataset would erase this workspace, so it is switched off while sign-in is on.' },
+      { status: 403 },
+    );
+  }
   try {
     SimulatedErp.reset();
     SimulatedMailbox.reset();

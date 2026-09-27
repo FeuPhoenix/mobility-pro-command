@@ -193,24 +193,60 @@ paid usage without authorisation.
 
 ---
 
-## Access control — an honest statement
+## Access control
 
-There is **no authentication** in this phase, and the brief does not ask for
-one. The person acting is chosen from a picker in the top bar, which is a
-demonstration control, not a security boundary.
+Two modes, chosen with `AUTH_MODE`.
 
-What *is* built, and what matters for adding authentication later:
+**`demo` (the default).** The person acting is chosen from a picker in the top
+bar. A demonstration control, not a security boundary: anyone who can reach the
+server can act as anyone. Never run demo mode with real data on a server others
+can reach.
 
-- every company-scoped read and write goes through a `Ctx` carrying the acting
-  user, and calls `assertCompanyAccess` before touching anything;
-- approval is restricted to the manager role, server-side;
-- attachments are only served when the acting user can already reach the record
-  that references them, so a guessed key leaks nothing;
-- every meaningful action is written to an audit trail the UI cannot rewrite.
+**`entra`: Sign in with Microsoft.** People sign in with their work account
+(OpenID Connect with PKCE, one Entra tenant). A person gets in only if their
+email is on the **People** screen and their access is not switched off.
 
-Adding real authentication means replacing exactly one function —
-`resolveCtx` in `src/freight/session.ts`. Every authorisation check already in
-place keeps working unchanged.
+| Variable | Effect |
+| --- | --- |
+| `AUTH_MODE` | `entra` switches sign-in on |
+| `AUTH_ENTRA_TENANT_ID` | Directory (tenant) ID |
+| `AUTH_ENTRA_CLIENT_ID` / `AUTH_ENTRA_CLIENT_SECRET` | A **separate** app registration from the mail one: web platform, redirect URI `<AUTH_BASE_URL>/api/freight/auth/callback`, delegated `openid profile email` only |
+| `AUTH_BASE_URL` | The address people open, e.g. `https://freight.example.com` |
+| `AUTH_SESSION_SECRET` | Random, at least 32 characters. Signs session cookies; changing it signs everyone out |
+| `AUTH_BOOTSTRAP_ADMIN_EMAIL` | Lets this one address in as a manager with every company, **only while no manager exists**. For the first sign-in on an empty workspace; remove it afterwards |
+
+What sign-in mode guarantees:
+
+- **It fails closed.** Incomplete configuration refuses every request with the
+  reason; it never falls back to the demo picker.
+- **The ID token is verified in full:** signature against Microsoft's published
+  keys, issuer, audience, tenant, expiry and nonce.
+- **An account is bound on first sign-in** to its immutable Entra object id.
+  Renaming a different account to the same address gets nowhere.
+- **Switching off access works immediately:** a session is checked against the
+  People list on every request, not just at sign-in.
+- **No demo controls:** the "Acting as" picker and *Load demo data* are off and
+  refused by the server.
+- Sessions last 10 hours, in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` over
+  HTTPS). Signing out ends the session here, not the Microsoft session.
+
+**People** (Settings, managers only): add a person with their work email, role
+and companies; edit; switch access off and on. A manager can hand out only the
+companies they hold themselves, and cannot change their own role, remove their
+own companies or switch off their own access, so a workspace cannot lose its
+last manager by accident. The roles are the existing three: Logistics
+Operations Manager (approves email), Logistics Coordinator (prepares, cannot
+approve), Viewer (read-only).
+
+The authorisation checks themselves are unchanged in both modes: every
+company-scoped read and write goes through a `Ctx` and `assertCompanyAccess`;
+approval is restricted to the manager role; attachments are only served to
+someone who can reach the record; every action is audited, including sign-ins
+and changes to people.
+
+**Not verified live.** Tested with a locally generated signing key standing in
+for Microsoft, and on a running server up to the redirect to Microsoft. The
+first real sign-in needs the app registration.
 
 ---
 

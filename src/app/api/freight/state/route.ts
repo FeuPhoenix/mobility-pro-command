@@ -6,14 +6,22 @@ import { listCompanyProviders } from '@/freight/repo';
 import { tryResolveCtx, USER_COOKIE } from '@/freight/session';
 import { getSetting } from '@/freight/db';
 import { RELATIONSHIP_LABEL } from '@/freight/types';
+import { authMode, entraConfig } from '@/freight/auth/config';
+import { listPeople } from '@/freight/auth/people';
 
 export const dynamic = 'force-dynamic';
 
 /** Everything the workspace needs to render, in one request. */
 export async function GET(request: Request) {
+  const mode = authMode();
   const ctx = await tryResolveCtx();
   if (!ctx) {
-    return NextResponse.json({ seeded: false, users: [], companies: [] });
+    return NextResponse.json({
+      seeded: false,
+      users: [],
+      companies: [],
+      auth: { mode, signedIn: false, problems: mode === 'entra' ? entraConfig().problems : [] },
+    });
   }
 
   const url = new URL(request.url);
@@ -45,7 +53,15 @@ export async function GET(request: Request) {
   return NextResponse.json({
     seeded: listRfqs(ctx).length > 0 || companies.length > 0,
     user: ctx.user,
-    users: listUsers(),
+    auth: { mode, signedIn: true, problems: [] },
+    // Demo mode: everyone, for the "Acting as" picker. Signed-in mode: only a
+    // manager sees people, for the People screen, and only those they manage.
+    users:
+      mode === 'demo'
+        ? listUsers().filter((u) => !u.disabled)
+        : ctx.user.role === 'logistics_manager'
+          ? listPeople(ctx)
+          : [],
     companies,
     companyId: companyId ?? null,
     overview,
@@ -63,8 +79,14 @@ export async function GET(request: Request) {
 
 /** Switches the acting person. A demonstration control, not authentication. */
 export async function POST(request: Request) {
+  if (authMode() !== 'demo') {
+    return NextResponse.json(
+      { ok: false, error: 'Switching person is a demonstration control and is off while sign-in is on.' },
+      { status: 403 },
+    );
+  }
   const body = (await request.json().catch(() => ({}))) as { userId?: string };
-  const user = listUsers().find((u) => u.id === body.userId);
+  const user = listUsers().find((u) => u.id === body.userId && !u.disabled);
   if (!user) {
     return NextResponse.json({ ok: false, error: 'That person is not in this workspace.' }, { status: 400 });
   }

@@ -39,6 +39,8 @@ export interface ProviderRow {
 
 export interface FreightState {
   seeded: boolean;
+  /** demo: the "Acting as" picker. entra: Sign in with Microsoft. */
+  auth?: { mode: 'demo' | 'entra'; signedIn: boolean; problems: string[] };
   user: User | null;
   users: User[];
   companies: Company[];

@@ -111,9 +111,24 @@ export function getUser(id: Id): User | null {
 export function insertUser(u: User): void {
   db()
     .prepare(
-      'INSERT INTO users (id, name, title, email, role, company_ids) VALUES (?,?,?,?,?,?)',
+      'INSERT INTO users (id, name, title, email, role, company_ids, disabled, external_id) VALUES (?,?,?,?,?,?,?,?)',
     )
-    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds));
+    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0, u.externalId ?? null);
+}
+
+export function updateUser(u: User): void {
+  db()
+    .prepare(
+      'UPDATE users SET name = ?, title = ?, email = ?, role = ?, company_ids = ?, disabled = ?, external_id = ? WHERE id = ?',
+    )
+    .run(u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0, u.externalId ?? null, u.id);
+}
+
+export function findUserByEmail(email: string): User | null {
+  const row = db().prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email.trim()) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? rowToUser(row) : null;
 }
 
 function rowToUser(r: Record<string, unknown>): User {
@@ -124,6 +139,8 @@ function rowToUser(r: Record<string, unknown>): User {
     email: r.email as string,
     role: r.role as User['role'],
     companyIds: json<string[]>(r.company_ids, []),
+    disabled: bool(r.disabled),
+    externalId: str(r.external_id),
   };
 }
 

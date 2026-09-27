@@ -24,6 +24,11 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
     useFreight();
   const pathname = usePathname();
   const [confirmDemo, setConfirmDemo] = React.useState(false);
+  const signIn = state?.auth?.mode === 'entra';
+
+  if (signIn && state && !state.auth?.signedIn) {
+    return <SignInScreen problems={state.auth?.problems ?? []} />;
+  }
 
   const counts = state?.overview?.counts;
   const badge = (href: string): number => {
@@ -75,9 +80,11 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
 
         <div className="rail-foot">
           <AdapterChip />
-          <button className="btn ghost sm" style={{ color: '#9db3c8', justifyContent: 'flex-start' }} onClick={() => setConfirmDemo(true)}>
-            <Icon name="reset" size={14} /> Load demo data
-          </button>
+          {signIn ? null : (
+            <button className="btn ghost sm" style={{ color: '#9db3c8', justifyContent: 'flex-start' }} onClick={() => setConfirmDemo(true)}>
+              <Icon name="reset" size={14} /> Load demo data
+            </button>
+          )}
         </div>
       </nav>
 
@@ -113,7 +120,24 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
             </label>
           ) : null}
 
-          {state && state.users.length > 0 ? (
+          {signIn && state?.user ? (
+            <div className="row" style={{ gap: 8 }}>
+              <span className="tiny muted" style={{ whiteSpace: 'nowrap' }} data-testid="signed-in-as">
+                {state.user.name}
+              </span>
+              <button
+                className="btn sm"
+                onClick={async () => {
+                  await fetch('/api/freight/auth/logout', { method: 'POST' });
+                  window.location.href = '/freight';
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          ) : null}
+
+          {!signIn && state && state.users.length > 0 ? (
             <label className="row" style={{ gap: 7 }}>
               <span className="tiny muted" style={{ whiteSpace: 'nowrap' }}>Acting as</span>
               <select
@@ -151,7 +175,7 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         ) : !state?.seeded ? (
-          <EmptyWorkspace onLoad={() => setConfirmDemo(true)} />
+          <EmptyWorkspace onLoad={signIn ? null : () => setConfirmDemo(true)} />
         ) : (
           children
         )}
@@ -228,19 +252,51 @@ function AdapterChip() {
   );
 }
 
-function EmptyWorkspace({ onLoad }: { onLoad: () => void }) {
+function SignInScreen({ problems }: { problems: string[] }) {
+  return (
+    <div className="page">
+      <div className="empty" style={{ maxWidth: 520, margin: '12vh auto' }}>
+        <h3>Freight RFQ</h3>
+        {problems.length > 0 ? (
+          <>
+            <p>Sign-in is switched on but not fully configured on the server, so nobody can sign in yet.</p>
+            <ul className="small muted" style={{ textAlign: 'left', paddingLeft: 18, lineHeight: 1.6 }}>
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <>
+            <p>Sign in with your Microsoft work account to continue.</p>
+            <div className="row" style={{ justifyContent: 'center', marginTop: 14 }}>
+              <a className="btn primary" href="/api/freight/auth/login">
+                Sign in with Microsoft
+              </a>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyWorkspace({ onLoad }: { onLoad: (() => void) | null }) {
   return (
     <div className="page">
       <div className="empty" style={{ maxWidth: 620, margin: '48px auto' }}>
         <h3>This freight workspace is empty</h3>
         <p>
-          There are no companies or freight providers yet. Load the demonstration dataset to see the
-          whole journey with realistic fictional data, or add your first company in Providers.
+          {onLoad
+            ? 'There are no companies or freight providers yet. Load the demonstration dataset to see the whole journey with realistic fictional data, or add your first company in Providers.'
+            : 'There are no companies or freight providers yet. Add your first company in Providers, then add people in Settings.'}
         </p>
         <div className="row" style={{ justifyContent: 'center', gap: 8, marginTop: 14 }}>
-          <button className="btn primary" onClick={onLoad}>
-            Load the demonstration dataset
-          </button>
+          {onLoad ? (
+            <button className="btn primary" onClick={onLoad}>
+              Load the demonstration dataset
+            </button>
+          ) : null}
           <Link className="btn" href="/freight/providers">
             Add a company
           </Link>

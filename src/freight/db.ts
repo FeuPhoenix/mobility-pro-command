@@ -259,6 +259,7 @@ export function db(): DatabaseSync {
   const file = process.env.FREIGHT_DB_FILE ?? path.join(DATA_DIR, 'freight.db');
   const handle = new DatabaseSync(file);
   handle.exec(SCHEMA);
+  migrate(handle);
   instance = handle;
   (globalThis as { __freightDb?: DatabaseSync }).__freightDb = handle;
   return handle;
@@ -268,7 +269,28 @@ export function db(): DatabaseSync {
 export function openMemoryDb(): DatabaseSync {
   const handle = new DatabaseSync(':memory:');
   handle.exec(SCHEMA);
+  migrate(handle);
   return handle;
+}
+
+/**
+ * Additive changes to databases created by an earlier version. Each step checks
+ * before it acts, so running it on every start is safe.
+ */
+function migrate(handle: DatabaseSync): void {
+  const userColumns = new Set(
+    (handle.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!userColumns.has('disabled')) handle.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+  if (!userColumns.has('external_id')) handle.exec('ALTER TABLE users ADD COLUMN external_id TEXT');
+  // Sign-in finds a person by email, so an address may belong to one person only.
+  try {
+    handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email))');
+  } catch {
+    // An older database with duplicate addresses keeps working; the People
+    // screen refuses to create new duplicates.
+  }
+  handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_external_id_key ON users (external_id) WHERE external_id IS NOT NULL');
 }
 
 /** Point the module-wide handle at a specific database. Tests only. */

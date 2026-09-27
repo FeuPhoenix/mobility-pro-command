@@ -12,6 +12,7 @@
 import React from 'react';
 import { Card, CardHead, Field, Notice, Pill } from '@/components/ui';
 import { useFreight } from '@/freight/ui/FreightProvider';
+import { PeopleCard } from '@/freight/ui/PeopleCard';
 import type { FxRate } from '@/freight/types';
 
 export default function SettingsPage() {
@@ -37,6 +38,7 @@ export default function SettingsPage() {
         </div>
         <div className="stack">
           <IntegrationsCard />
+          <PeopleCard />
         </div>
       </div>
     </div>
