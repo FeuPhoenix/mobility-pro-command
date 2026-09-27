@@ -34,7 +34,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 312 unit tests
+npm test                 # 321 unit tests
 npm run test:e2e         # 23 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 64 checks in demo mode, 12 in the signed-in modes
 ```
@@ -135,6 +135,11 @@ one row per quotation version with its record, and states in words why a
 quotation cannot be written rather than leaving the row silently empty. What is
 left on this item is theirs: create the DocType, then run it once against a real
 instance.
+
+The live ERPNext path now has a contract test: `tests/erpnext-live-quotation.test.ts`
+drives the real adapter over real HTTP against a small server that behaves like
+Frappe, including the unique index. It proves our side speaks the protocol it
+thinks it does; only a write against their instance proves the rest.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 
