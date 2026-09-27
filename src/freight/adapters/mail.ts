@@ -159,10 +159,29 @@ export async function graphToken(cfg: GraphConfig): Promise<string> {
   return data.access_token;
 }
 
+/**
+ * Domains reserved by RFC 2606 / RFC 6761. They can never receive mail; the
+ * demonstration dataset uses them on purpose. A live transport refuses them up
+ * front, with a reason, rather than handing Graph a message that will bounce.
+ */
+const RESERVED_DOMAIN = /(\.test|\.invalid|\.example|\.localhost|(^|\.)example\.(com|net|org))$/i;
+
+/** Graph's limit for inline attachments when creating a message. */
+const INLINE_ATTACHMENT_LIMIT = 3 * 1024 * 1024;
+
 export class GraphTransport implements MailTransport {
   private lastProbe: TransportStatus | null = null;
 
-  constructor(private readonly cfg: GraphConfig) {}
+  constructor(
+    private readonly cfg: GraphConfig,
+    /** Injected so tests can fake Graph without touching the network. */
+    private readonly http: typeof fetch = fetch,
+    private readonly token: (cfg: GraphConfig) => Promise<string> = graphToken,
+  ) {}
+
+  private mailboxPath(): string {
+    return `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.cfg.mailbox)}`;
+  }
 
   status(): TransportStatus {
     if (this.lastProbe) return this.lastProbe;
@@ -177,16 +196,15 @@ export class GraphTransport implements MailTransport {
 
   async probe(): Promise<TransportStatus> {
     try {
-      const token = await graphToken(this.cfg);
+      const token = await this.token(this.cfg);
       // Reads the mailbox's Sent Items folder rather than the user profile:
       // GET /users/{id} needs User.Read.All, which the setup guide does not ask
       // for, so it would fail on a correctly configured app. Mail.ReadWrite
       // covers this call. It proves the token and the mailbox scope; Mail.Send
       // itself is only proven by the first real send.
-      const res = await fetch(
-        `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.cfg.mailbox)}/mailFolders/sentitems?$select=id`,
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+      const res = await this.http(`${this.mailboxPath()}/mailFolders/sentitems?$select=id`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       if (!res.ok) {
         const detail = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
         this.lastProbe = {
@@ -224,10 +242,42 @@ export class GraphTransport implements MailTransport {
     }
   }
 
+  /**
+   * Creates the message as a draft, then sends that draft.
+   *
+   * Two calls rather than one `sendMail`, because `sendMail` returns no id at
+   * all. Creating the draft first yields the RFC 5322 Message-ID, which is
+   * stored as the transport id: a provider's reply carries it in In-Reply-To,
+   * so replies can be matched to the exact RFQ email by thread rather than
+   * only by the reference in the subject. Needs Mail.ReadWrite as well as
+   * Mail.Send, both of which the setup guide already grants.
+   */
   async send(msg: OutboundMessage): Promise<SendResult> {
-    const token = await graphToken(this.cfg);
-    const payload = {
-      message: {
+    if (msg.to.length === 0) {
+      throw new SendFailure('There is no recipient on this email.', false);
+    }
+    const reserved = [...msg.to, ...msg.cc].filter((r) => RESERVED_DOMAIN.test(r.email.split('@')[1] ?? ''));
+    if (reserved.length > 0) {
+      throw new SendFailure(
+        `${reserved.map((r) => r.email).join(', ')} ${reserved.length === 1 ? 'is a reserved address that' : 'are reserved addresses that'} cannot receive email - demonstration data, most likely. Nothing was sent. Use a real address.`,
+        false,
+      );
+    }
+    const bytes = msg.attachments.reduce((n, a) => n + a.content.byteLength, 0);
+    if (bytes > INLINE_ATTACHMENT_LIMIT) {
+      throw new SendFailure(
+        `The attachments total ${(bytes / 1024 / 1024).toFixed(1)} MB, above the 3 MB this connection can send in one message. Nothing was sent.`,
+        false,
+      );
+    }
+
+    const token = await this.token(this.cfg);
+    const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+
+    const draftRes = await this.call('create the message', `${this.mailboxPath()}/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
         subject: msg.subject,
         body: { contentType: 'Text', content: msg.bodyText },
         toRecipients: msg.to.map((r) => ({ emailAddress: { address: r.email, name: r.name ?? undefined } })),
@@ -238,29 +288,57 @@ export class GraphTransport implements MailTransport {
           contentType: a.contentType,
           contentBytes: a.content.toString('base64'),
         })),
-      },
-      saveToSentItems: true,
-    };
-    const res = await fetch(
-      `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(this.cfg.mailbox)}/sendMail`,
-      {
+      }),
+    });
+    const draft = (await draftRes.json()) as { id: string; internetMessageId?: string };
+
+    try {
+      await this.call('send the message', `${this.mailboxPath()}/messages/${encodeURIComponent(draft.id)}/send`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      },
-    );
-    if (!res.ok) {
-      const detail = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
-      // 429 and 5xx are worth retrying; a 4xx is a content or permission problem.
-      const retryable = res.status === 429 || res.status >= 500;
+        headers,
+      });
+    } catch (err) {
+      if (err instanceof SendFailure && err.message.startsWith('Could not reach')) {
+        // The request may have reached Graph before the connection dropped, so
+        // the message may already be on its way. A blind retry could send it
+        // twice, so say exactly what to check first. The draft is left alone:
+        // it is the evidence.
+        throw new SendFailure(
+          `${err.message} It is not known whether Graph sent the message. Check Sent Items in ${this.cfg.mailbox} before retrying, so the provider is not emailed twice.`,
+          false,
+        );
+      }
+      // Graph refused it outright, so nothing was sent. Remove the draft so the
+      // mailbox does not fill with abandoned copies; failing to is harmless.
+      await this.http(`${this.mailboxPath()}/messages/${encodeURIComponent(draft.id)}`, {
+        method: 'DELETE',
+        headers,
+      }).catch(() => undefined);
+      throw err;
+    }
+
+    return { messageId: draft.internetMessageId ?? `graph:${draft.id}`, simulated: false };
+  }
+
+  /** A Graph call that turns every failure into a SendFailure with a plain reason. */
+  private async call(what: string, url: string, init: RequestInit): Promise<Response> {
+    let res: Response;
+    try {
+      res = await this.http(url, init);
+    } catch (err) {
       throw new SendFailure(
-        `Microsoft Graph refused the send (${res.status}${detail.error?.code ? ` ${detail.error.code}` : ''}). ${detail.error?.message ?? ''}`.trim(),
-        retryable,
+        `Could not reach Microsoft Graph to ${what}: ${err instanceof Error ? err.message : 'network error'}.`,
+        true,
       );
     }
-    // sendMail returns 202 with no body and no message id. The id is only
-    // discoverable afterwards from Sent Items, so it is not fabricated here.
-    return { messageId: `graph-accepted-${Date.now().toString(36)}`, simulated: false };
+    if (res.ok) return res;
+    const detail = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string } };
+    // 429 and 5xx are worth retrying; a 4xx is a content or permission problem.
+    const retryable = res.status === 429 || res.status >= 500;
+    throw new SendFailure(
+      `Microsoft Graph refused to ${what} (${res.status}${detail.error?.code ? ` ${detail.error.code}` : ''}). ${detail.error?.message ?? ''}`.trim(),
+      retryable,
+    );
   }
 }
 

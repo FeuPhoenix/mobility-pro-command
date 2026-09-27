@@ -62,8 +62,8 @@ exercised from this environment, and none is claimed as working.
 
 | Integration | What is missing to verify it |
 | --- | --- |
-| Microsoft Graph `sendMail` | An Entra app registration with `Mail.Send` and admin consent |
-| Microsoft Graph mailbox collection (delta query) | The same app registration with `Mail.ReadWrite`. Tested against a faked Graph only |
+| Microsoft Graph sending (draft, then send) | An Entra app registration with `Mail.Send` and `Mail.ReadWrite`, admin consent, scoped to one mailbox. Tested against a faked Graph. Run `docs/FREIGHT_W2_LIVE_TEST.md` |
+| Microsoft Graph mailbox collection (delta query) | The same app registration. Tested against a faked Graph only; covered by the same checklist |
 | ERPNext write | A reachable instance **and** an agreed destination DocType |
 | Anthropic prose fallback | An API key; deliberately not used, since paid usage was not authorised |
 
@@ -101,10 +101,25 @@ name, never a manager's.
   outgoing and incoming email. The result is stored against the configuration
   it was made for, so changing the tenant, app or mailbox clears it. Before
   this, nothing ever ran the Graph probe, so "connected" could never appear.
-- **Known limit for W2:** Graph `sendMail` returns no message id, so a reply's
-  `In-Reply-To` cannot be tied to the RFQ email yet. Replies still match on the
-  RFQ reference and the sender, as they do in the demo; looking the id up in
-  Sent Items after sending would add thread matching.
+
+### Live email readiness (added 2026-09-27, W2 code side)
+
+W2 itself is a live test that needs a tenant. Everything that could be done
+without one is done, and the live run is a checklist:
+`docs/FREIGHT_W2_LIVE_TEST.md`.
+
+- **Real Message-IDs.** Graph `sendMail` returns no id, so a reply could never
+  be tied to the RFQ email by thread. Sending now creates a draft and sends it,
+  and the draft's Message-ID is stored as the transport id.
+- **Thread matching actually uses it.** The matcher looked up only the reply's
+  conversation id, which Graph always supplies, so `In-Reply-To` was never
+  consulted. It now tries both. A reply with the reference deleted from the
+  subject is matched by thread; a test proves it end to end.
+- **Safer live sends.** Reserved addresses (the demo's `.test` ones) and
+  attachments over 3 MB are refused before Graph is called. A refused send
+  deletes its draft. A dropped connection mid-send is reported as "check Sent
+  Items before retrying", not as a retryable failure, so nobody is emailed
+  twice.
 
 ---
 

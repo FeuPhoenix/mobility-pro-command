@@ -82,8 +82,6 @@ Branch: `feat/freight-rfq`. Built 2026-09-26.
 - Microsoft Graph (sending and collection), live ERPNext and the AI fallback are
   written but have **not** been verified against live services from this
   environment. Graph collection is tested against a faked Graph only.
-- Graph `sendMail` returns no message id, so replies cannot yet be matched by
-  thread; they match on the RFQ reference and the sender.
 - `ingestMessage()` is not atomic: if quote extraction throws after the message
   row is written, a later run sees the message as already collected and no
   quote is created. Rare, but worth closing before live use.
@@ -118,3 +116,26 @@ Defects found while doing it:
    `GET /users/{id}` requires `User.Read.All`; the guide grants `Mail.Send` and
    `Mail.ReadWrite`. The probe now reads Sent Items, which `Mail.ReadWrite`
    covers.
+
+## 2026-09-27 — W2: live email readiness (code side)
+
+Branch: `dev`. The live test itself needs a tenant; it is written up as a
+checklist in `docs/FREIGHT_W2_LIVE_TEST.md`.
+
+- [x] Graph sending creates a draft, then sends it, and stores the real
+      Message-ID as the transport id
+- [x] Reserved addresses and attachments over 3 MB refused before Graph is
+      called; a refused send deletes its draft; a dropped connection mid-send
+      says to check Sent Items rather than inviting a retry
+- [x] The matcher tries both the conversation id and In-Reply-To
+- [x] "Freight RFQ" link in the operations navigation
+- [x] Tests: 9 unit (`tests/graph-mail.test.ts`), including a full round trip:
+      send through Graph, reply with no reference, matched by thread. Totals
+      146 unit
+
+Defect found while doing it:
+
+9. **In-Reply-To was never consulted.** The matcher used
+   `threadId ?? inReplyTo`, and Graph supplies a conversation id on every
+   message, so a reply's In-Reply-To was ignored even had a real Message-ID
+   been stored. Both are now tried. Undoing the fix fails two tests.

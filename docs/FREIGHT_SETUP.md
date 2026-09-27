@@ -89,9 +89,20 @@ setup requirement rather than failing.
    check reads the mailbox's Sent Items with `Mail.ReadWrite`; permission to
    *send* is only proven by the first real send.
 
-**Not verified live.** The Graph code path is complete but has not been run
-against a real tenant from this environment — no app registration was available.
-Treat the first live send as a test: send one RFQ to an internal address first.
+**How it sends.** Each email is created as a draft in the mailbox and then
+sent, rather than with a single `sendMail` call. That yields the email's real
+Message-ID, which is stored, so a provider's reply is matched to the exact RFQ
+email by its In-Reply-To even when they delete the reference from the subject.
+Before calling Graph at all, a live send refuses reserved addresses (`.test`,
+`.invalid`, `example.com`, as used by the demonstration data) and attachments
+over 3 MB, each with a plain reason. If the connection drops mid-send, the
+error says to check Sent Items before retrying, so a provider is never emailed
+twice.
+
+**Not verified live.** The Graph code path is complete and tested against a
+faked Graph, but has not been run against a real tenant from this environment
+— no app registration was available. The first live run is a checklist:
+`docs/FREIGHT_W2_LIVE_TEST.md`.
 
 ### Inbound collection
 

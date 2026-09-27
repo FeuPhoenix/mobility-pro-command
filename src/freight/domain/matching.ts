@@ -53,9 +53,12 @@ export function findReference(text: string): string | null {
 }
 
 export function matchMessage(input: MatchInput, ctx: MatchContext): MatchOutcome {
-  // 1. Thread id - the reply is on the conversation we started.
-  const threadKey = input.threadId ?? input.inReplyTo;
-  if (threadKey) {
+  // 1. Thread - the reply is on the conversation we started. Both keys are
+  //    tried: a transport's conversation id, and In-Reply-To, which carries the
+  //    Message-ID of the email we sent. Graph supplies a conversation id on
+  //    every message, so In-Reply-To must not be skipped just because one exists.
+  for (const threadKey of [input.threadId, input.inReplyTo]) {
+    if (!threadKey) continue;
     const hit = ctx.threadIndex.get(threadKey);
     if (hit) {
       return {
