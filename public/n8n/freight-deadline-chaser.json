@@ -112,7 +112,7 @@
         1140,
         220
       ],
-      "notes": "Wire to Slack or email. The message must say reminders are waiting for approval - never that they were sent.",
+      "notes": "Says reminders are waiting for approval - never that they were sent, because nothing was.",
       "notesInFlow": true
     },
     {

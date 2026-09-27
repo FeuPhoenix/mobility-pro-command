@@ -25,6 +25,8 @@ const EMAIL = process.env.N8N_EMAIL ?? 'freight@mobilitypro.test';
 const PASSWORD = process.env.N8N_PASSWORD ?? 'FreightRfq2026';
 const MPC = (process.env.MPC_BASE_URL ?? 'http://localhost:4310').replace(/\/+$/, '');
 const AUTOMATION_TOKEN = process.env.FREIGHT_AUTOMATION_TOKEN ?? '';
+/** With a Teams Incoming Webhook URL the notification nodes become real posts. */
+const TEAMS_WEBHOOK = process.env.TEAMS_WEBHOOK_URL ?? '';
 const COLLECT_TOKEN = process.env.MAILBOX_COLLECT_TOKEN ?? '';
 
 const WORKFLOW_DIR = 'scripts/.n8n-workflows';
@@ -183,9 +185,17 @@ console.log('');
 console.log('Generating workflows with literal URLs for this instance:');
 execFileSync(
   process.execPath,
-  ['scripts/build-freight-workflows.mjs', `--base-url=${MPC}`, `--out=${WORKFLOW_DIR}`],
+  [
+    'scripts/build-freight-workflows.mjs',
+    `--base-url=${MPC}`,
+    `--out=${WORKFLOW_DIR}`,
+    ...(TEAMS_WEBHOOK ? [`--teams-webhook=${TEAMS_WEBHOOK}`] : []),
+  ],
   { stdio: 'inherit' },
 );
+if (!TEAMS_WEBHOOK) {
+  console.log('  (no TEAMS_WEBHOOK_URL: notification nodes stay placeholders)');
+}
 console.log('');
 
 const settings = await waitForN8n();

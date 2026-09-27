@@ -28,6 +28,12 @@ const arg = (name) => {
 };
 
 const BASE_URL = arg('base-url');
+/**
+ * A Teams Incoming Webhook URL. With one, the placeholder notification nodes
+ * become real posts; without one they stay placeholders, which keeps the
+ * committed exports importable by anyone.
+ */
+const TEAMS_WEBHOOK = arg('teams-webhook') ?? process.env.TEAMS_WEBHOOK_URL ?? null;
 const OUT = arg('out') ?? 'public/n8n';
 mkdirSync(OUT, { recursive: true });
 
@@ -86,6 +92,52 @@ const iff = (id, name, position, leftValue, operation, rightValue, notes) =>
 
 const noop = (id, name, position, notes) =>
   node(id, name, 'n8n-nodes-base.noOp', 1, position, {}, notes);
+
+/**
+ * Posts an Adaptive Card to a Microsoft Teams channel.
+ *
+ * An Incoming Webhook is the whole configuration: one URL, no app registration,
+ * no OAuth. When no URL is supplied the workflow keeps a no-op placeholder
+ * instead, so the exports stay importable by anyone.
+ */
+const teams = (id, name, position, title, textExpression, notes) => {
+  if (!TEAMS_WEBHOOK) return noop(id, name, position, notes);
+  return node(
+    id,
+    name,
+    'n8n-nodes-base.httpRequest',
+    4.2,
+    position,
+    {
+      method: 'POST',
+      url: TEAMS_WEBHOOK,
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: JSON.stringify({
+        type: 'message',
+        attachments: [
+          {
+            contentType: 'application/vnd.microsoft.card.adaptive',
+            content: {
+              type: 'AdaptiveCard',
+              $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+              version: '1.4',
+              body: [
+                { type: 'TextBlock', text: title, weight: 'Bolder', size: 'Medium', wrap: true },
+                { type: 'TextBlock', text: `={{ ${textExpression} }}`, wrap: true },
+              ],
+              actions: [
+                { type: 'Action.OpenUrl', title: 'Open the workspace', url: `${BASE_URL ?? 'http://localhost:4310'}/freight` },
+              ],
+            },
+          },
+        ],
+      }),
+      options: { response: { response: { neverError: true, fullResponse: true } } },
+    },
+    notes,
+  );
+};
 
 /** n8n connections are keyed by node *name*; index 0 is true, 1 is false. */
 const conn = (pairs) => {
@@ -185,11 +237,13 @@ write(
         [920, 220],
         'Creates DRAFT reminders only. It cannot send: the automation identity is refused by both assertCanApprove and assertCanSend. Every draft waits in the manager approval queue.',
       ),
-      noop(
+      teams(
         'fdc-05',
         'Tell the manager they are waiting',
         [1140, 220],
-        'Wire to Slack or email. The message must say reminders are waiting for approval - never that they were sent.',
+        'Freight: reminders ready for approval',
+        "$json.body.message",
+        'Says reminders are waiting for approval - never that they were sent, because nothing was.',
       ),
       noop('fdc-06', 'Nothing due', [920, 400]),
     ],
@@ -221,11 +275,13 @@ write(
         'Read-only. Includes approvals that lapsed because the email was edited after being approved, which are the easiest ones to miss.',
       ),
       iff('fan-03', 'Anything waiting?', [700, 300], '={{ $json.body.data.count }}', 'gt', 0),
-      noop(
+      teams(
         'fan-04',
         'Nudge the manager',
         [920, 220],
-        'Wire to Slack or email. Link to /freight: approving has to happen in the application, where the recipients and the body are visible.',
+        'Freight: emails waiting for your approval',
+        "$json.body.data.count + ' email(s) waiting. Longest wait: ' + ($json.body.data.items[0] ? $json.body.data.items[0].waitingSinceHours + 'h on ' + $json.body.data.items[0].reference : 'n/a')",
+        'Links to the workspace: approving has to happen there, where the recipients and the body are visible.',
       ),
       noop('fan-05', 'Queue is clear', [920, 400]),
     ],
@@ -312,11 +368,13 @@ write(
         0,
         'A briefing that says "nothing to do" every morning stops being read. Post only when there is something.',
       ),
-      noop(
+      teams(
         'fdb-04',
         'Post the briefing',
         [920, 220],
-        'Wire to Slack or email. Lead with deadlines inside 24 hours and anything waiting for approval.',
+        'Freight: this morning',
+        "$json.body.data.awaitingApproval + ' awaiting approval, ' + $json.body.data.quotesToCheck + ' quotes to check, ' + $json.body.data.repliesToMatch + ' replies to match, ' + $json.body.data.erpNeedsAttention + ' records to finish. Deadlines within 24h: ' + $json.body.data.deadlinesWithin24h.length",
+        'Leads with what needs a decision. Posts only when there is something to report.',
       ),
       noop('fdb-05', 'Quiet day, stay silent', [920, 400]),
     ],
@@ -382,6 +440,8 @@ for (const file of readdirSync(OUT).filter((f) => f.startsWith('freight-'))) {
   for (const n of wf.nodes) {
     const url = n.parameters?.url;
     if (typeof url !== 'string') continue;
+    // A Teams webhook points outside this application; skip the route check.
+    if (TEAMS_WEBHOOK && url === TEAMS_WEBHOOK) continue;
     const path = BASE_URL ? url.replace(BASE_URL, '') : url.replace('={{ $vars.MPC_BASE_URL }}', '');
     if (!existsSync(`src/app${path}/route.ts`)) fail(`${file}: no route for ${path}`);
     else console.log(`  ok  ${file.padEnd(34)} ${n.parameters.method.padEnd(4)} ${path}`);

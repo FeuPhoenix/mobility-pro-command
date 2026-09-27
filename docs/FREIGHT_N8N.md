@@ -111,10 +111,23 @@ is inactive.
 | `freight-erpnext-retry.json` | hourly | Retries failed records; escalates ones blocked on setup instead of retrying forever. |
 | `freight-daily-briefing.json` | weekdays 08:00 | One summary call, posted only when there is something to report. |
 
-The `noOp` nodes named "Nudge the manager", "Post the briefing" and "Raise to
-operations" are deliberate placeholders: the destination is Slack, Teams or
-email depending on the client, and the credential belongs in their instance.
-Replace the node, keep the wiring.
+### Notifications
+
+The customer chose **Microsoft Teams**. Supply a channel Incoming Webhook URL
+and the three notification nodes become real posts — an Adaptive Card with the
+counts and a link back to the workspace:
+
+```bash
+TEAMS_WEBHOOK_URL='https://...webhook.office.com/webhookb2/...' npm run n8n:provision
+```
+
+One URL is the whole configuration: no app registration, no OAuth. Get it from
+Teams → the channel → Connectors → Incoming Webhook.
+
+Without it the nodes stay as `noOp` placeholders, which is how the committed
+exports ship so anyone can import them. "Raise to operations" is still a
+placeholder either way — where an operational failure should go is a decision
+for the client's on-call arrangement, not something to guess.
 
 Exports land **inactive**. A workflow that started running the moment it was
 imported would chase real providers from someone's test instance.

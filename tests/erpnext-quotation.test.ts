@@ -155,12 +155,8 @@ describe('provenance travels with the figures', () => {
 /* ------------------------- The DocType matches the payload ---------------------- */
 
 describe('the proposed DocType holds everything written', () => {
-  const parent = parentDoctype({ module: 'Freight', supplierLink: true }) as {
-    fields: { fieldname: string; fieldtype: string; unique?: number; reqd?: number; default?: unknown }[];
-  };
-  const child = childDoctype({ module: 'Freight' }) as {
-    fields: { fieldname: string; fieldtype: string; default?: unknown; reqd?: number }[];
-  };
+  const parent = parentDoctype({ module: 'Freight', supplierLink: true });
+  const child = childDoctype({ module: 'Freight' });
 
   it('has every parent field the payload writes', () => {
     const defined = new Set(parent.fields.map((f) => f.fieldname));

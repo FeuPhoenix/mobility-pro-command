@@ -88,7 +88,7 @@
         920,
         220
       ],
-      "notes": "Wire to Slack or email. Lead with deadlines inside 24 hours and anything waiting for approval.",
+      "notes": "Leads with what needs a decision. Posts only when there is something to report.",
       "notesInFlow": true
     },
     {

@@ -86,7 +86,7 @@
         920,
         220
       ],
-      "notes": "Wire to Slack or email. Link to /freight: approving has to happen in the application, where the recipients and the body are visible.",
+      "notes": "Links to the workspace: approving has to happen there, where the recipients and the body are visible.",
       "notesInFlow": true
     },
     {

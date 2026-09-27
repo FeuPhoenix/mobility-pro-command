@@ -4,7 +4,8 @@
 This document is the orientation; the deeper documents are linked where they
 matter.
 
-Last updated 27 September 2026.
+Last updated 27 September 2026 (second revision — W3/W4/W5 merged, client
+answers recorded, `.eml` reading and the ERPNext quotation destination added).
 
 ---
 
@@ -33,9 +34,9 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 202 unit tests
-npm run test:e2e         # 13 browser tests, needs a production build first
-node scripts/journey.mjs # 72 end-to-end checks, needs the server running
+npm test                 # 301 unit tests
+npm run test:e2e         # 21 browser tests + 4 skipped, needs a build first
+node scripts/journey.mjs # 64 checks in demo mode, 12 in the signed-in modes
 ```
 
 All three should pass on a clean checkout. If they do not, stop and say so —
@@ -65,9 +66,12 @@ test.**
 7. **Automation can prepare, never send.** The `system_automation` identity is
    refused by both `assertCanApprove` and `assertCanSend`, even for an email a
    person already approved.
-8. **No anonymous access.** Every freight screen and endpoint needs a session.
-   The two token-protected automation endpoints are the deliberate exception,
-   and they run as system identities.
+8. **No anonymous access** in the two real auth modes. Every freight screen and
+   endpoint needs a session. The token-protected automation endpoints are the
+   deliberate exception, and run as system identities. `AUTH_MODE=demo` is the
+   picker and is a demonstration control only.
+9. **Only checked quotations reach ERPNext**, a missing charge is written as
+   null and never zero, and each revision is its own record.
 
 ---
 
@@ -78,8 +82,13 @@ test.**
   comparison and recommendation → outcome email → ERPNext record.
 - Spreadsheet import for provider lists, with validation and duplicate
   detection. Excel comparison output.
-- **Authentication** — scrypt passwords, revocable database sessions, throttled
-  attempts, first-run setup.
+- **Authentication**, three modes: `demo` (the picker), `password` (scrypt,
+  revocable sessions, throttling, first-run setup), `entra` (Sign in with
+  Microsoft, plus a People screen for managing access).
+- **`.eml` reading** — real provider quotations can be loaded through the same
+  pipeline as live mail, before any mailbox is connected.
+- **ERPNext raw-quotation destination** — the one the customer chose.
+- **Start an RFQ by email** (W5), off by default.
 - **Scheduled reply collection** from a shared mailbox.
 - **n8n automation** — seven endpoints, five workflows, verified end to end
   against a real n8n 2.40.7 instance.
@@ -100,78 +109,78 @@ mail, so a misconfiguration cannot reach a real provider.
 
 ## 5. The work left, in priority order
 
-### A. Agree the ERPNext destination — *blocked on the customer, then 2–3 days*
+### A. Validate extraction against the customer's real quotations — *next*
 
-**The single biggest blocker.** ERPNext has no native "freight comparison"
-document, so the live adapter deliberately refuses to write rather than guess.
-Do not remove that guard.
+He is sending sample replies as `.eml`. Load them from **Replies → Load .eml
+files**; they go through the same matching and extraction as live mail. Expect
+the parsers to need tuning — that is the point of the exercise, and it is the
+step that has to happen before anything is stored in ERPNext.
 
-Needs an hour with whoever owns the ERPNext instance. `FREIGHT_ERPNEXT.md` has
-a proposed `Freight Comparison` DocType, the full field mapping, and five
-questions to answer. When you build it, add a **unique index** on
-`freight_idempotency_key` — the lookup-then-write is not atomic, so the database
-constraint is the real duplicate guard.
+Add a parser test for every new format you meet, **before** changing a regex.
 
-### B. Verify Microsoft Graph sending — *1 day once credentials exist*
+### B. Build the ERPNext DocType — *customer's side, then ~1 day*
 
-The code path is complete but **has never run against a real tenant**. Needs an
-Entra app registration with `Mail.Send` application permission, admin consent,
-and an ApplicationAccessPolicy scoping it to one mailbox. Exact steps and a
-results table are in `FREIGHT_W2_LIVE_TEST.md`.
+The destination is agreed: raw quotations. `scripts/erpnext/freight-quotation-doctype.mjs`
+is the definition, and `docs/FREIGHT_ERPNEXT.md` section 1 is the field list to
+hand their team. Add the unique index on `freight_idempotency_key`, and keep
+`amount` optional with no default.
 
-Send the first one to an internal address. The demo addresses are reserved and
-the live adapter refuses them on purpose.
+Still to write on our side: the sync service that walks confirmed quotations and
+writes them, alongside the existing comparison sync. The payload, the guard and
+the DocType are done and tested.
 
-### C. Deploy it — *1 day*
+### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 
-Never deployed anywhere. It needs a **writable filesystem** — it will not run on
-read-only serverless. Any normal Node host is fine.
+Never run against a real tenant. Needs an Entra app registration with
+`Mail.Send`, admin consent, and an ApplicationAccessPolicy scoping it to the one
+mailbox. Steps and a results table in `FREIGHT_W2_LIVE_TEST.md`.
 
-The persistence is deliberate: an approval that does not survive a reload is not
-an approval. The older operations demo in this repo is stateless and deploys
-anywhere; do not "fix" the freight module to match it.
+The customer is setting up a dedicated test mailbox. Send the first RFQ to an
+internal address; the live adapter refuses the demo `.test` addresses by design.
 
-Behind TLS, either terminate with a proxy that sets `x-forwarded-proto`, or set
+### D. Turn on Teams notifications — *minutes, once the URL arrives*
+
+Get a channel Incoming Webhook URL, then:
+
+```bash
+TEAMS_WEBHOOK_URL='https://...' npm run n8n:provision
+```
+
+The three notification nodes become Adaptive Card posts. Without the URL they
+stay placeholders, which is how the committed exports ship.
+
+### E. Deploy it — *1 day*
+
+Never deployed. Needs a **writable filesystem** — not read-only serverless.
+Behind TLS, either terminate with a proxy that sets `x-forwarded-proto` or set
 `FREIGHT_FORCE_SECURE_COOKIES=true`.
 
-### D. Real accounts — *half a day*
+### F. Real accounts
 
-Sign-in is built; the account list is not. You need the real people, their
-roles, and which companies each may act on. There is no password reset,
-invitation email or MFA yet — decide whether you need them before go-live.
+Pick the mode. `entra` is the better fit for a Microsoft 365 customer and brings
+password reset and MFA for free; `password` avoids waiting on tenant work. Both
+are built. You still need the real people, their roles and their companies.
 
-### E. Import the real provider list — *depends on the data*
+### G. Optional
 
-Use the template from the Providers screen. The importer validates in full and
-reports problems by row number before writing anything.
+- **Provider list import** — only needed at go-live, or to match sample replies
+  to a provider automatically rather than attaching them by hand.
+- **AI prose fallback** — written, off by default, costs money.
 
-### F. Optional, only if the customer asks
+## 6. Decisions — answered 27 September
 
-- **n8n notification delivery.** The workflows stop at a placeholder node; the
-  Slack or Teams credential is the client's to add.
-- **Email-triggered RFQ intake.** Currently a form plus Excel import, because
-  the customer never confirmed which they want.
-- **AI prose fallback.** Written, off by default, costs money. If it is turned
-  on, keep its output low-confidence and human-checked.
+| Question | Answer |
+| --- | --- |
+| Where do comparison outcomes go in ERPNext? | **Raw quotations first**, comparison later once extraction is validated against actuals |
+| Sample quotations | Being prepared, as `.eml` |
+| Access | Must be configurable, not hardcoded — it is |
+| n8n | No instance their side; we run one for development. Notifications via **Microsoft Teams** |
+| Mailbox | A dedicated test account, and it must stay configurable — it is |
+| Provider list | Not needed yet; the providers behind the samples would help matching |
 
----
-
-## 6. Decisions still needed from the customer
-
-Each has a working default, so these change scope, not correctness.
-
-1. **Where do comparison outcomes go in ERPNext?** — blocks A
-2. Are freight providers already Suppliers in ERPNext? If so, records should
-   carry the supplier id
-3. How do RFQs start — form, Excel or email?
-4. Who selects providers? Currently explicit manager selection
-5. When is collection complete? Currently explicit manager closure
-6. Confirm ranking weights (cost 60 / transit 25 / free days 15 — a starting
-   point, not a recommendation)
-7. Currency policy — should a daily FX rate be pulled, and from where?
-8. The real list of people, roles and companies — blocks D
-
----
+Still open: are freight providers already Suppliers in ERPNext; how RFQs should
+start in production; when collection closes; the ranking weights; the FX source;
+and the real list of people and roles.
 
 ## 7. Things that will bite you
 
