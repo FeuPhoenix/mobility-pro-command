@@ -1,6 +1,87 @@
-# Recording freight comparison outcomes in ERPNext
+# Freight data in ERPNext
 
-## The problem
+> **Decision, 27 September 2026.** The customer chose to store the **raw
+> quotations** rather than the processed comparison: *"I prefer to store the raw
+> data (quotations) from emails instead of the processed data (comparison).
+> Then, we can make the analytical part."*
+>
+> That is the better call. The quotations are a reusable data asset; a stored
+> comparison is only this application's conclusion frozen into their ERP. It
+> also keeps the ranking logic out of ERPNext, so changing how offers are
+> weighed never needs a schema change on their side.
+>
+> **`Freight Quotation` is now the primary destination** — section 1 below. The
+> comparison destination is still built and still available, and is kept in
+> section 2 for when they want the decision record too.
+
+---
+
+## 1. `Freight Quotation` — the agreed destination
+
+Definitions: `scripts/erpnext/freight-quotation-doctype.mjs`.
+Payload: `quotationPayload()` in `src/freight/adapters/erpquotation.ts`.
+A unit test fails if the two disagree, because Frappe **silently drops unknown
+fields** — a partial DocType would lose data while reporting success.
+
+### Three rules the analytics depend on
+
+**Only checked quotations are written.** Every extracted figure carries a
+confidence and a source reference, and a person confirms or corrects it before
+it can be compared. Unreviewed machine output is never sent, so their reports
+are not built on numbers nobody has verified. `quotationBlockedReason()` is the
+single place that decides, and it gives the reason in words.
+
+**A missing charge stays missing.** It is written as `null`, never `0`. A
+provider naming a surcharge without pricing it is ordinary; zeroing it makes
+their offer look like the cheapest when it is not. The `amount` field is
+deliberately not required and has no default — **please keep it that way**, and
+make sure reports treat empty as unknown rather than nil.
+
+**Each revision is its own record**, carrying `quotation_version` and
+`supersedes_quotation`. Aggregating across versions without filtering will
+count the same offer twice.
+
+### `Freight Quotation` (parent)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `freight_idempotency_key` | Data, **Unique**, read-only | What a retry searches on. Add the unique index. |
+| `company` | Link → Company | |
+| `supplier` | Link → Supplier, or Data | Link if freight providers are already Suppliers |
+| `provider_name` | Data | |
+| `rfq_reference`, `route`, `origin_port`, `destination_port`, `incoterm` | Data | The request it answers |
+| `quotation_version` | Int | 1, then 2 for a revision |
+| `supersedes_quotation` | Data, read-only | The version this replaces |
+| `quotation_status`, `received_at`, `reviewed_at` | Data / Date | `reviewed_at` is when a person checked it |
+| `shipping_line`, `currency`, `container_basis` | Data | |
+| `base_freight`, `total_quoted_by_provider` | Float | **Not required, no default.** Empty means not stated |
+| `transit_days`, `free_days_destination` | Int | |
+| `valid_until`, `sailing_date` | Date | |
+| `payment_terms`, `inclusions`, `exclusions`, `conditions` | Small Text | |
+| `charges` | Table → `Freight Quotation Charge` | |
+| `source_kind`, `source_attachment`, `extractor` | Data, read-only | Where the figures came from |
+| `field_confidence` | Code (JSON), read-only | Per field: high / medium / low / missing / corrected_by_reviewer |
+
+### `Freight Quotation Charge` (child)
+
+`charge_code`, `charge_label`, `amount` (Float, **optional, no default**),
+`currency`, `basis` (per_container / per_shipment / per_bl / per_cbm /
+per_tonne / unknown), `confidence`, `source_reference`.
+
+### Reading it afterwards
+
+- Filter to `quotation_status = 'confirmed'` and exclude rows that appear in
+  another row's `supersedes_quotation`.
+- Treat an empty `amount` as unknown, not zero. A total built by summing
+  charges is only meaningful when none of them is empty.
+- `field_confidence` says which figures a person verified. Anything below
+  `high` deserves a look before it drives a decision.
+
+---
+
+## 2. `Freight Comparison` — the decision record, still available
+
+### The problem it solves
 
 ERPNext has no native document for "we asked five freight providers for a rate,
 here is how they compared, and here is the one we recommend". The closest
@@ -125,6 +206,9 @@ create and write on the DocType) and `create` on `File` for the attachment. It
 needs nothing else. Start there rather than with a System Manager key.
 
 ## Open questions for the customer
+
+> **Answered 27 Sep:** question 1 (where the data goes) — raw quotations first,
+> the comparison later once extraction has been validated against actuals.
 
 1. **Which destination?** A custom `Freight Comparison` DocType as above, or
    should each offer become a `Supplier Quotation` with the comparison held
