@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { needsFirstRunSetup } from '@/freight/auth';
+import { needsFirstRunSetup } from '@/freight/auth/password';
 import { tryResolveCtx } from '@/freight/session';
 import { listUsers } from '@/freight/repo';
 import { getSetting } from '@/freight/db';

@@ -440,7 +440,7 @@ export function integrationStatus(): IntegrationStatus {
       externalTrigger: Boolean(process.env.MAILBOX_COLLECT_TOKEN),
       lastRun: lastCollectionRun(),
     },
-    erp: erpStatusForDisplay(),
+    erp: withLastCheck('erp', erpStatusForDisplay()),
     ai: aiStatusForDisplay(),
     automation: {
       enabled: Boolean(process.env.FREIGHT_AUTOMATION_TOKEN),

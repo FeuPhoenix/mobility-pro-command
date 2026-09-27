@@ -26,9 +26,9 @@
 
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash, type ScryptOptions } from 'node:crypto';
 import { promisify } from 'node:util';
-import { db, str } from './db';
-import { getUser, newId, now, type Ctx } from './repo';
-import type { Id, User } from './types';
+import { db, str } from '../db';
+import { getUser, newId, now, type Ctx } from '../repo';
+import type { Id, User } from '../types';
 
 // `promisify` drops the options overload, so the shape is restated here.
 const scrypt = promisify(scryptCb) as (

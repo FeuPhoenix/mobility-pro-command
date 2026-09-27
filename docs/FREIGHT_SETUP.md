@@ -25,9 +25,9 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 118 business-logic tests (Vitest), 36 of them freight
-npm run test:e2e     # 9 browser journeys (Playwright, uses your installed Chrome)
-node scripts/journey.mjs   # 54 end-to-end checks over HTTP against a running server
+npm test             # 210 business-logic tests (Vitest)
+npm run test:e2e     # 21 browser journeys (Playwright, uses your installed Chrome)
+node scripts/journey.mjs   # 61 end-to-end checks over HTTP against a running server
 ```
 
 `npm run test:e2e` needs a production build first and starts its own server on
@@ -149,6 +149,48 @@ collected, and anything unrecognised goes to the review queue.
 A reply can still be brought in by hand from the request screen, and the whole
 downstream workflow behaves identically.
 
+### Starting an RFQ by email (off by default)
+
+`RFQ_EMAIL_INTAKE=on` lets colleagues raise a request by email. It needs reply
+collection (above) running, because it reads the same mailbox.
+
+A person on the **People** list emails the freight mailbox with *New RFQ*,
+*RFQ request* or *Shipping requirement* in the subject (not a reply, and
+without an existing RFQ reference), and either attaches the Excel template from
+*Requests → New* or writes labelled lines:
+
+```
+Company: MPD                       (only if they cover several companies)
+Title: Tyre import, North China to Alexandria
+Origin port: CNSHA
+Destination port: EGALY
+Incoterm: FOB
+Containers: 6 x 40HC, Passenger car tyres, 21500 kg
+Containers: 2 x 20GP, Truck tyres
+Ship from: 2026-11-10
+Ship to: 2026-11-24
+Reply by: 2026-10-06               (15:00 UTC that day, unless a time is given)
+Currency: USD
+Cargo notes: ...                   (optional)
+Instructions: ...                  (optional)
+```
+
+What happens:
+
+- A readable request becomes a **draft** RFQ in the sender's name, validated
+  exactly as the form validates. Providers are not chosen and nothing is sent;
+  that stays with a person, under the usual approval rule.
+- One that cannot be read in full creates nothing. It appears under *RFQ
+  requests by email* on **Replies**, with every problem listed, until someone
+  dismisses it.
+- A read-only person, or a company the sender does not cover, is refused with
+  the reason.
+- The same email collected twice is recognised and ignored.
+
+Mail from anyone not on the People list goes through normal reply matching.
+Sender addresses can be forged, which is one reason this only ever creates
+drafts that a person reviews before anything is sent.
+
 ### ERPNext
 
 | Variable | Default | Effect |
@@ -157,9 +199,13 @@ downstream workflow behaves identically.
 | `ERPNEXT_BASE_URL` | — | e.g. `https://erp.mobilitypro.com` |
 | `ERPNEXT_API_KEY` / `ERPNEXT_API_SECRET` | — | API keys for a user with permission on the destination DocType |
 | `ERPNEXT_DOCTYPE` | — | The agreed destination. **Deliberately has no default.** |
+| `ERPNEXT_COMPANY_MAP` | — | JSON mapping company codes to exact ERPNext Company names |
 
-The live adapter **refuses to write** until `ERPNEXT_DOCTYPE` names a DocType it
-has confirmed exists on the target instance. ERPNext has no native freight
+The live adapter **refuses to write** until `ERPNEXT_DOCTYPE` names a DocType
+that can hold every field it writes, with the idempotency key marked Unique. It
+checks this before every write; *Check connection* in Settings lists anything
+missing. `scripts/erpnext-create-doctype.mjs` creates the proposed DocType once
+the customer agrees to it. ERPNext has no native freight
 comparison document, so guessing one would either write to the wrong place or
 fail against a schema nobody has seen. See `docs/FREIGHT_ERPNEXT.md` for the
 proposed mapping and the questions that need answering first.
@@ -191,27 +237,85 @@ paid usage without authorisation.
 
 ## Access control
 
-Sign-in is required. There is no anonymous access to any freight screen or
-endpoint, and no fallback identity.
+Two modes, chosen with `AUTH_MODE`.
 
-### How it works
+**`demo` (the default).** The person acting is chosen from a picker in the top
+bar. A demonstration control, not a security boundary: anyone who can reach the
+server can act as anyone. Never run demo mode with real data on a server others
+can reach.
+
+**`entra`: Sign in with Microsoft.** People sign in with their work account
+(OpenID Connect with PKCE, one Entra tenant). A person gets in only if their
+email is on the **People** screen and their access is not switched off.
+
+| Variable | Effect |
+| --- | --- |
+| `AUTH_MODE` | `entra` switches sign-in on |
+| `AUTH_ENTRA_TENANT_ID` | Directory (tenant) ID |
+| `AUTH_ENTRA_CLIENT_ID` / `AUTH_ENTRA_CLIENT_SECRET` | A **separate** app registration from the mail one: web platform, redirect URI `<AUTH_BASE_URL>/api/freight/auth/callback`, delegated `openid profile email` only |
+| `AUTH_BASE_URL` | The address people open, e.g. `https://freight.example.com` |
+| `AUTH_SESSION_SECRET` | Random, at least 32 characters. Signs session cookies; changing it signs everyone out |
+| `AUTH_BOOTSTRAP_ADMIN_EMAIL` | Lets this one address in as a manager with every company, **only while no manager exists**. For the first sign-in on an empty workspace; remove it afterwards |
+
+What sign-in mode guarantees:
+
+- **It fails closed.** Incomplete configuration refuses every request with the
+  reason; it never falls back to the demo picker.
+- **The ID token is verified in full:** signature against Microsoft's published
+  keys, issuer, audience, tenant, expiry and nonce.
+- **An account is bound on first sign-in** to its immutable Entra object id.
+  Renaming a different account to the same address gets nowhere.
+- **Switching off access works immediately:** a session is checked against the
+  People list on every request, not just at sign-in.
+- **No demo controls:** the "Acting as" picker and *Load demo data* are off and
+  refused by the server.
+- Sessions last 10 hours, in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` over
+  HTTPS). Signing out ends the session here, not the Microsoft session.
+
+**People** (Settings, managers only): add a person with their work email, role
+and companies; edit; switch access off and on. A manager can hand out only the
+companies they hold themselves, and cannot change their own role, remove their
+own companies or switch off their own access, so a workspace cannot lose its
+last manager by accident. The roles are the existing three: Logistics
+Operations Manager (approves email), Logistics Coordinator (prepares, cannot
+approve), Viewer (read-only).
+
+The authorisation checks themselves are unchanged in both modes: every
+company-scoped read and write goes through a `Ctx` and `assertCompanyAccess`;
+approval is restricted to the manager role; attachments are only served to
+someone who can reach the record; every action is audited, including sign-ins
+and changes to people.
+
+**Not verified live.** Tested with a locally generated signing key standing in
+for Microsoft, and on a running server up to the redirect to Microsoft. The
+first real sign-in needs the app registration.
+
+### `password` mode, in detail
+
+For a deployment that cannot use Entra, or is not willing to wait for the
+tenant work. Set `AUTH_MODE=password`.
 
 - **Passwords** are hashed with scrypt from Node's own crypto (N=32768, r=8,
-  p=1), with a per-password salt. Minimum ten characters, with a letter and a
+  p=1) with a per-password salt. Minimum ten characters, with a letter and a
   digit.
-- **Sessions** are rows in the database, not stateless tokens, so they can be
-  revoked. Only the SHA-256 of the session token is stored, so a database
-  backup does not hand over live sessions. A session lasts seven days, or
-  twelve hours idle, whichever comes first.
-- **A password change ends every session** for that person.
-- **Disabling an account takes effect on the next request**, not at expiry.
+- **Sessions are rows**, not stateless tokens, so they can be revoked. Only the
+  SHA-256 of the token is stored, so a database backup does not hand over live
+  sessions. Seven days, or twelve hours idle, whichever comes first.
+- **A password change ends every session** for that person, and **disabling an
+  account takes effect on the next request**, not at expiry.
 - **Failed attempts are throttled**: eight within fifteen minutes locks the
   account for fifteen minutes.
 - **Sign-in never reveals whether an address exists.** A wrong password and an
-  unknown address give the same message, and both take the same time, because
-  the unknown case still performs a full scrypt comparison.
+  unknown address give the same message in the same time, because the unknown
+  case still performs a full scrypt comparison.
+- **First run**: a workspace where nobody can sign in offers to create the first
+  account, then that route refuses, so it cannot become a second back door.
+- The session cookie is `Secure` when the request arrived over HTTPS, or over a
+  proxy that set `x-forwarded-proto`. Deliberately not keyed off `NODE_ENV`:
+  `next start` sets production, and a browser will not store a `Secure` cookie
+  over plain HTTP, so sign-in would fail silently on an internal HTTP
+  deployment. `FREIGHT_FORCE_SECURE_COOKIES=true` pins it on.
 
-### First run
 
 A workspace where nobody can sign in offers to create the first account, which
 becomes the Logistics Operations Manager for every existing company. Once one

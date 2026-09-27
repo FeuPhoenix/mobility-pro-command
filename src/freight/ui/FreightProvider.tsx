@@ -18,7 +18,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { Company, InboundMessage, RankingCriteria, FxRate, User } from '@/freight/types';
+import type { Company, InboundMessage, RankingCriteria, FxRate, RfqRequest, User } from '@/freight/types';
 import type { Overview, IntegrationStatus } from '@/freight/view';
 
 export interface ProviderRow {
@@ -38,14 +38,27 @@ export interface ProviderRow {
 }
 
 export interface FreightState {
-  signedIn: boolean;
   seeded: boolean;
+  /**
+   * demo: the "Acting as" picker. password: email and password held here.
+   * entra: Sign in with Microsoft.
+   */
+  auth?: {
+    mode: 'demo' | 'password' | 'entra';
+    signedIn: boolean;
+    /** Password mode only: nobody can sign in yet, so offer first-run setup. */
+    needsSetup?: boolean;
+    problems: string[];
+  };
   user: User | null;
+  /** Demo mode: everyone, for the picker. Signed-in mode: the People list. */
+  users: User[];
   companies: Company[];
   companyId: string | null;
   overview: Overview | null;
   providers: ProviderRow[];
   inbox: InboundMessage[];
+  rfqRequests?: { enabled: boolean; items: RfqRequest[] };
   integrations: IntegrationStatus | null;
   settings: {
     criteria: RankingCriteria | null;
@@ -72,6 +85,8 @@ interface FreightContextValue {
   /** Runs a mutation. Returns the result, or null when it failed. */
   run: <T = unknown>(action: Record<string, unknown>) => Promise<{ message: string; data: T } | null>;
   signOut: () => Promise<void>;
+  /** Demo mode only. The server refuses it in the two real modes. */
+  switchUser: (userId: string) => Promise<void>;
   loadDemo: () => Promise<void>;
   toasts: Toast[];
   dismissToast: (id: number) => void;
@@ -202,6 +217,36 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
     [companyId, load, notify],
   );
 
+  const switchUser = useCallback(
+    async (userId: string) => {
+      setBusy(true);
+      try {
+        const res = await fetch('/api/freight/state', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        });
+        const payload = (await res.json()) as { ok?: boolean; message?: string; error?: string };
+        if (!res.ok || !payload.ok) {
+          notify('bad', payload.error ?? 'That person could not be selected.');
+          return;
+        }
+        notify('info', payload.message ?? 'Switched.');
+        // The new person may not have access to the selected company.
+        setCompanyIdRaw(null);
+        try {
+          window.localStorage.removeItem(COMPANY_KEY);
+        } catch {
+          /* a blocked localStorage is not a reason to fail the switch */
+        }
+        await load(null);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load, notify],
+  );
+
   const signOut = useCallback(async () => {
     setBusy(true);
     try {
@@ -240,12 +285,13 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
       refresh,
       run,
       signOut,
+      switchUser,
       loadDemo,
       toasts,
       dismissToast,
       notify,
     }),
-    [state, loading, busy, error, companyId, setCompanyId, refresh, run, signOut, loadDemo, toasts, dismissToast, notify],
+    [state, loading, busy, error, companyId, setCompanyId, refresh, run, signOut, switchUser, loadDemo, toasts, dismissToast, notify],
   );
 
   return <FreightContext.Provider value={value}>{children}</FreightContext.Provider>;

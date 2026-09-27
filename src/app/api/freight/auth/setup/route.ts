@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { needsFirstRunSetup, passwordProblem, setPassword, createSession } from '@/freight/auth';
+import { needsFirstRunSetup, passwordProblem, setPassword, createSession } from '@/freight/auth/password';
 import { sessionCookieOptions, SESSION_COOKIE } from '@/freight/session';
 import { audit, insertUser, newId, listAllCompanyIds } from '@/freight/repo';
 import type { User } from '@/freight/types';

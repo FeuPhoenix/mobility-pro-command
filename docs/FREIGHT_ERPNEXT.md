@@ -71,15 +71,58 @@ across retries and restarts. Before inserting, the adapter searches for an
 existing document with that key and issues a `PUT` instead of a `POST` if it
 finds one.
 
-**Add a unique index on that field in ERPNext.** The lookup-then-write is not
-atomic, so the database constraint is the real guarantee against a duplicate
-created by two simultaneous retries.
+- **The unique index is required, and checked.** The lookup-then-write is not
+  atomic, so the database constraint is the real guarantee. The adapter reads
+  the DocType before every write and refuses if `freight_idempotency_key` is
+  missing or not marked Unique.
+- **A failed lookup stops the write.** Inserting blind after a failed lookup is
+  how a retry creates a duplicate, so the sync is marked failed (retryable).
+- **A race is recovered.** If two retries insert at once, ERPNext's index
+  refuses the second (`DuplicateEntryError`); the adapter finds the record that
+  won and updates it.
+- **The workbook is attached once.** A retry checks for the file on the record
+  before uploading.
+
+## The guard: no write until the destination can hold the record
+
+Frappe silently drops fields a DocType does not have. So before every write,
+and on *Check connection*, the adapter compares the DocType against every field
+`erpPayload()` writes, including the `offers` child table, and refuses with a
+list of what is missing. Settings shows the list. Nothing is written until it
+is empty.
+
+## Creating the proposed DocType
+
+Once the customer agrees on the `Freight Comparison` shape (question 1),
+`scripts/erpnext-create-doctype.mjs` creates it:
+
+```bash
+node scripts/erpnext-create-doctype.mjs --dry-run            # print the definitions
+node scripts/erpnext-create-doctype.mjs --module Buying       # create them
+node scripts/erpnext-create-doctype.mjs --supplier-link       # providers as Links to Supplier (question 2)
+```
+
+It needs an **administrator's** key in `ERPNEXT_ADMIN_API_KEY` /
+`ERPNEXT_ADMIN_API_SECRET`, used once and not stored by the application. It
+creates the role *Freight RFQ Integration*, the child table, and the DocType
+with the key marked Unique. It skips anything that already exists and never
+modifies an existing DocType. The definitions live in
+`scripts/erpnext/freight-comparison-doctype.mjs`, and a unit test fails if they
+stop matching `erpPayload()`.
+
+## Companies
+
+ERPNext's `company` field is a Link, so it must match the ERPNext Company name
+exactly. `ERPNEXT_COMPANY_MAP` maps this application's company codes to those
+names, e.g. `{"MPD":"Mobility Pro Distribution S.A.E."}`; an unmapped company
+sends its name as it is here. A mismatch is reported as a setup requirement
+naming the variable, not as a bare `417`.
 
 ## Permissions
 
-The API user needs `create` and `write` on the destination DocType and `create`
-on `File` for the attachment. It needs nothing else. Start there rather than
-with a System Manager key.
+The application's API user needs the *Freight RFQ Integration* role (read,
+create and write on the DocType) and `create` on `File` for the attachment. It
+needs nothing else. Start there rather than with a System Manager key.
 
 ## Open questions for the customer
 
@@ -100,6 +143,22 @@ with a System Manager key.
    The adapter reads the version during its probe but cannot act on it until
    the destination is agreed.
 
+## Going live (after the customer has answered question 1)
+
+1. An administrator runs `scripts/erpnext-create-doctype.mjs` against a test
+   site first, or creates the agreed DocType by hand.
+2. Create an API user for the application with only the *Freight RFQ
+   Integration* role and `create` on File; generate its key and secret.
+3. On the server: `ERPNEXT_ADAPTER=live`, `ERPNEXT_BASE_URL`, `ERPNEXT_API_KEY`,
+   `ERPNEXT_API_SECRET`, `ERPNEXT_DOCTYPE="Freight Comparison"`, and
+   `ERPNEXT_COMPANY_MAP` if company names differ. Restart.
+4. **Settings → Connections → ERPNext → Check connection.** It must say
+   *ERPNext connected* with no setup requirements.
+5. Record one comparison. Check in ERPNext: one record, the workbook attached,
+   *Recommendation status* reads *Recommended, not selected*.
+6. Press **Retry** on it (or record it again): the same record is updated, no
+   second record appears, the workbook is not attached twice.
+
 ## What has and has not been verified
 
 | | Status |
@@ -109,4 +168,6 @@ with a System Manager key.
 | Retry after failure without duplicating | Tested against the simulated adapter, and in the browser |
 | Failure surfaced honestly in the UI | Tested |
 | Simulated result never shown as a live write | Tested |
+| Destination guard, duplicate recovery, one attachment | Unit tested against a faked Frappe |
+| Proposed DocType matches the payload | Unit tested |
 | **A real write to a real ERPNext instance** | **Not verified.** No instance was reachable from this environment. |

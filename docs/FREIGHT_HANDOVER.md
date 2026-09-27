@@ -72,7 +72,8 @@ exercised from this environment, and none is claimed as working.
 ### Not built in this phase
 
 - Password reset, invitations and multi-factor authentication. Sign-in itself
-  is built; these are the pieces around it.
+  is built in both modes; these are the pieces around it. Entra mode gets reset
+  and MFA from Microsoft for free.
 - Everything explicitly out of scope: shipment tracking, vessel positions,
   arrival prediction, provider discovery, WhatsApp/WeChat, negotiation,
   booking, a data warehouse.
@@ -104,6 +105,21 @@ name, never a manager's.
   outgoing and incoming email. The result is stored against the configuration
   it was made for, so changing the tenant, app or mailbox clears it. Before
   this, nothing ever ran the Graph probe, so "connected" could never appear.
+
+### Status of the work items (2026-09-27)
+
+| Item | Code | What is left |
+| --- | --- | --- |
+| W1 reply collection | Done | Live test with W2 |
+| W2 live Graph email | Done | Run `docs/FREIGHT_W2_LIVE_TEST.md` on a tenant |
+| W3 ERPNext write | Done, guarded | Customer picks the destination; create it (`scripts/erpnext-create-doctype.mjs`); live test in `FREIGHT_ERPNEXT.md` |
+| W4 sign-in and roles | Done (`AUTH_MODE=entra`) | App registration, real people list; first sign-in |
+| W5 RFQ by email | Done, off (`RFQ_EMAIL_INTAKE=on`) | Customer confirms they want it |
+| W6 deployment | Not started | Choose a host |
+| W7 AI fallback | Unchanged, off | Explicit authorisation |
+
+Everything the customer or an administrator must do is in
+`docs/FREIGHT_GO_LIVE.md`.
 
 ### Live email readiness (added 2026-09-27, W2 code side)
 
@@ -200,7 +216,7 @@ Industrial. The MPD requests disappear, and a direct request for one returns
 
 | Check | Result |
 | --- | --- |
-| `npm test` | **137 passed** (82 operations demo, 36 freight, 19 mailbox collection) |
+| `npm test` | **210 passed** (82 operations demo, 128 freight) |
 | `npm run test:e2e` | **21 passed** (12 operations demo, 9 freight; browser, real Chrome) |
 | `node scripts/journey.mjs` | **61 passed** over HTTP against a running server |
 | `npm run build` | Compiles clean; existing routes unchanged |
@@ -254,7 +270,8 @@ src/freight/
   types.ts            the domain model, with provenance built in
   db.ts               SQLite schema (node:sqlite, no native build)
   repo.ts             data access; every company-scoped call takes a Ctx
-  session.ts          who is acting (the one function authentication replaces)
+  session.ts          who is acting: demo picker or Microsoft sign-in
+  auth/               sign-in (OIDC), signed cookies, the People rules
   system.ts           the Mailbox Collector, the one non-person identity
   schedule.ts         the in-process collection timer (off unless configured)
   actions.ts          the single mutation boundary, validated with zod
@@ -264,7 +281,7 @@ src/freight/
   parsers/            deterministic text, Excel and PDF readers
   adapters/           mail, mailbox, ERPNext, AI - each with a simulated default
   service/            orchestration: providers, rfq, mail, inbox, collect,
-                      connections, compare, erp
+                      intake, connections, compare, erp
   excel/              comparison workbook and import templates
   demo/               the demonstration dataset, built by running the workflow
   ui/                 client state and shared components

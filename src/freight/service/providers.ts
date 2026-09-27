@@ -29,6 +29,8 @@ import {
   assertCanEdit,
   assertCompanyAccess,
   getCompanyProvider,
+  getUser,
+  updateUser,
   FreightError,
   tx,
   type Ctx,
@@ -69,8 +71,13 @@ export function createCompany(
     }
     throw err;
   }
-  // The creator must be able to see what they just made.
+  // The creator must be able to see what they just made - on this request and
+  // every later one, so it is saved, not only added to the in-memory user.
   ctx.user.companyIds.push(company.id);
+  const stored = getUser(ctx.user.id);
+  if (stored && !stored.companyIds.includes(company.id)) {
+    updateUser({ ...stored, companyIds: [...stored.companyIds, company.id] });
+  }
   audit(ctx, {
     companyId: company.id,
     action: 'company.created',

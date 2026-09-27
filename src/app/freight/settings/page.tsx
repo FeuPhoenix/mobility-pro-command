@@ -12,6 +12,7 @@
 import React from 'react';
 import { Card, CardHead, Field, Notice, Pill } from '@/components/ui';
 import { useFreight } from '@/freight/ui/FreightProvider';
+import { PeopleCard } from '@/freight/ui/PeopleCard';
 import type { FxRate } from '@/freight/types';
 
 export default function SettingsPage() {
@@ -37,6 +38,7 @@ export default function SettingsPage() {
         </div>
         <div className="stack">
           <IntegrationsCard />
+          <PeopleCard />
           <AutomationCard />
         </div>
       </div>
@@ -256,11 +258,11 @@ function IntegrationsCard() {
   const blocks: {
     title: string;
     s: { label: string; connected: boolean; detail: string; setupRequirements: string[]; lastProbedAt?: string };
-    check?: 'mail' | 'mailbox';
+    check?: 'mail' | 'mailbox' | 'erp';
   }[] = [
     { title: 'Outgoing email', s: i.mail, check: i.mail.kind === 'graph' ? 'mail' : undefined },
     { title: 'Incoming email', s: i.mailbox, check: i.mailbox.kind === 'graph' ? 'mailbox' : undefined },
-    { title: 'ERPNext', s: i.erp },
+    { title: 'ERPNext', s: i.erp, check: i.erp.kind === 'live' ? 'erp' : undefined },
     {
       title: 'AI assistance',
       s: { label: i.ai.label, connected: i.ai.enabled, detail: i.ai.detail, setupRequirements: i.ai.setupRequirements },

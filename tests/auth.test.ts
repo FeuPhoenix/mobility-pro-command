@@ -1,325 +1,269 @@
 /**
- * Authentication tests.
+ * Sign-in and people (W4).
  *
- * The emphasis is on what must be refused: a wrong password, a guessed one
- * tried repeatedly, a revoked or expired session, a disabled account, and a
- * system identity trying to sign in like a person.
+ * Microsoft is faked at the network boundary with a locally generated RSA key,
+ * so the ID token checks run for real: signature, issuer, audience, tenant,
+ * expiry, nonce. Nothing touches the network.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { generateKeyPairSync, sign as rsaSign, type KeyObject } from 'node:crypto';
 import { openMemoryDb, useDb } from '@/freight/db';
-import { db } from '@/freight/db';
-import { insertUser, newId, setUserDisabled, type Ctx } from '@/freight/repo';
-import {
-  clearAttempts,
-  createSession,
-  hashPassword,
-  needsFirstRunSetup,
-  passwordProblem,
-  revokeAllForUser,
-  revokeToken,
-  setPassword,
-  signIn,
-  userForToken,
-  verifyPassword,
-} from '@/freight/auth';
+import { getUser, insertUser, listCompanies, newId, type Ctx } from '@/freight/repo';
+import { createCompany } from '@/freight/service/providers';
+import { signToken, verifyToken } from '@/freight/auth/token';
+import { clearSigningKeys, finishLogin, startLogin, verifyIdToken, SignInError, type IdClaims } from '@/freight/auth/oidc';
+import { addPerson, NotAllowed, personForSignIn, setPersonDisabled, updatePerson } from '@/freight/auth/people';
+import { ctxFromSession } from '@/freight/session';
+import type { EntraConfig } from '@/freight/auth/config';
 import type { User } from '@/freight/types';
 
-const PASSWORD = 'CorrectHorse9';
+const SECRET = 'x'.repeat(40);
+const TENANT = '11111111-2222-3333-4444-555555555555';
+const CFG: EntraConfig = {
+  tenantId: TENANT,
+  clientId: 'client-abc',
+  clientSecret: 'shh',
+  baseUrl: 'https://freight.mp-real.com',
+  sessionSecret: SECRET,
+  bootstrapAdminEmail: 'admin@mp-real.com',
+};
 
-function makeUser(over: Partial<User> = {}): User {
-  const u: User = {
-    id: newId('usr'),
-    name: 'Hala Mansour',
-    title: 'Logistics Operations Manager',
-    email: `hala-${Math.random().toString(36).slice(2, 8)}@test.test`,
-    role: 'logistics_manager',
-    companyIds: [],
-    ...over,
-  };
+/* ------------------------------ Fake Microsoft ------------------------------- */
+
+function keyPair(kid: string) {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  return { kid, privateKey, jwk: { ...publicKey.export({ format: 'jwk' }), kid, use: 'sig', alg: 'RS256' } };
+}
+const primary = keyPair('key-1');
+
+function idToken(claims: Record<string, unknown>, key: { kid: string; privateKey: KeyObject } = primary) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: key.kid })).toString('base64url');
+  const body = Buffer.from(
+    JSON.stringify({
+      iss: `https://login.microsoftonline.com/${TENANT}/v2.0`,
+      aud: CFG.clientId,
+      tid: TENANT,
+      oid: 'oid-ann',
+      preferred_username: 'Ann@MP-Real.com',
+      name: 'Ann Manager',
+      nonce: 'nonce-1',
+      iat: now,
+      nbf: now,
+      exp: now + 3600,
+      ...claims,
+    }),
+  ).toString('base64url');
+  const sig = rsaSign('RSA-SHA256', Buffer.from(`${header}.${body}`), key.privateKey).toString('base64url');
+  return `${header}.${body}.${sig}`;
+}
+
+function fakeMicrosoft(opts: { keys?: object[]; token?: string; tokenStatus?: number } = {}) {
+  const calls: string[] = [];
+  const http = (async (input: string | URL | Request) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.endsWith('/discovery/v2.0/keys')) return Response.json({ keys: opts.keys ?? [primary.jwk] });
+    if (url.endsWith('/oauth2/v2.0/token')) {
+      return opts.tokenStatus
+        ? Response.json({ error: 'invalid_grant' }, { status: opts.tokenStatus })
+        : Response.json({ id_token: opts.token ?? idToken({}) });
+    }
+    return new Response('no route', { status: 404 });
+  }) as typeof fetch;
+  return { http, calls };
+}
+
+/* --------------------------------- Harness ---------------------------------- */
+
+let companyA: string;
+let companyB: string;
+let manager: Ctx;
+
+function person(name: string, role: User['role'], companyIds: string[], extra: Partial<User> = {}): Ctx {
+  const u: User = { id: newId('usr'), name, title: role, email: `${name.split(' ')[0].toLowerCase()}@mp-real.com`, role, companyIds, ...extra };
   insertUser(u);
-  return u;
+  return { user: u };
 }
 
 beforeEach(() => {
   useDb(openMemoryDb());
+  clearSigningKeys();
+  const boot: Ctx = { user: { id: 'boot', name: 'Boot', title: 'b', email: 'boot@x.test', role: 'logistics_manager', companyIds: [] } };
+  companyA = createCompany(boot, { code: 'AAA', name: 'Company A', country: 'Egypt', addressLines: ['1'] }).id;
+  companyB = createCompany(boot, { code: 'BBB', name: 'Company B', country: 'Egypt', addressLines: ['1'] }).id;
+  manager = person('Ann Manager', 'logistics_manager', [companyA]);
 });
 
-/* -------------------------------- Passwords ---------------------------------- */
+/* ---------------------------------- Tokens ----------------------------------- */
 
-describe('passwords', () => {
-  it('rejects one that is too short or has no digit', () => {
-    expect(passwordProblem('short1')).toMatch(/at least 10/i);
-    expect(passwordProblem('alllettershere')).toMatch(/letter and one number/i);
-    expect(passwordProblem('1234567890')).toMatch(/letter and one number/i);
-    expect(passwordProblem(PASSWORD)).toBeNull();
-  });
+describe('signed cookies', () => {
+  it('round-trips, and rejects tampering, the wrong secret and expiry', () => {
+    const t = signToken({ uid: 'u1' }, SECRET, 60);
+    expect(verifyToken(t, SECRET)?.uid).toBe('u1');
 
-  it('hashes with a per-password salt, so identical passwords differ on disk', async () => {
-    const a = await hashPassword(PASSWORD);
-    const b = await hashPassword(PASSWORD);
-    expect(a).not.toBe(b);
-    expect(a.startsWith('scrypt$')).toBe(true);
-    // The password itself must not be recoverable from the stored value.
-    expect(a).not.toContain(PASSWORD);
-  });
-
-  it('verifies the right password and refuses the wrong one', async () => {
-    const stored = await hashPassword(PASSWORD);
-    expect(await verifyPassword(PASSWORD, stored)).toBe(true);
-    expect(await verifyPassword('CorrectHorse8', stored)).toBe(false);
-    expect(await verifyPassword('', stored)).toBe(false);
-  });
-
-  it('returns false for a corrupt stored value rather than throwing', async () => {
-    for (const bad of ['', 'nonsense', 'scrypt$x$y$z$q$r', 'scrypt$32768$8$1$!!!$!!!']) {
-      expect(await verifyPassword(PASSWORD, bad)).toBe(false);
-    }
-    expect(await verifyPassword(PASSWORD, null)).toBe(false);
+    const [body, sig] = t.split('.');
+    const forged = Buffer.from(JSON.stringify({ uid: 'someone-else', exp: 9_999_999_999 })).toString('base64url');
+    expect(verifyToken(`${forged}.${sig}`, SECRET)).toBeNull();
+    expect(verifyToken(`${body}.${sig}x`, SECRET)).toBeNull();
+    expect(verifyToken(t, 'y'.repeat(40))).toBeNull();
+    expect(verifyToken(signToken({ uid: 'u1' }, SECRET, -1), SECRET)).toBeNull();
+    expect(verifyToken(undefined, SECRET)).toBeNull();
   });
 });
 
-/* --------------------------------- Sign in ----------------------------------- */
+/* --------------------------------- Sign-in ----------------------------------- */
 
-describe('signing in', () => {
-  it('works with the right password', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
-
-    const result = await signIn(user.email, PASSWORD);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.user.id).toBe(user.id);
-      expect(userForToken(result.token)?.id).toBe(user.id);
-    }
+describe('Sign in with Microsoft', () => {
+  it('starts with PKCE, a state and a nonce, and returns to this application', () => {
+    const start = startLogin(CFG);
+    const url = new URL(start.url);
+    expect(url.origin + url.pathname).toBe(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/authorize`);
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    expect(url.searchParams.get('code_challenge')).not.toBe(start.verifier);
+    expect(url.searchParams.get('state')).toBe(start.state);
+    expect(url.searchParams.get('nonce')).toBe(start.nonce);
+    expect(url.searchParams.get('redirect_uri')).toBe('https://freight.mp-real.com/api/freight/auth/callback');
   });
 
-  it('is case-insensitive on the address', async () => {
-    const user = makeUser({ email: 'Mixed.Case@test.test' });
-    await setPassword(user.id, PASSWORD);
-    const result = await signIn('mixed.case@TEST.test', PASSWORD);
-    expect(result.ok).toBe(true);
+  it('accepts a genuine ID token and reads the person from it', async () => {
+    const claims = await verifyIdToken(CFG, idToken({}), 'nonce-1', fakeMicrosoft().http);
+    expect(claims).toEqual({ oid: 'oid-ann', tid: TENANT, email: 'ann@mp-real.com', name: 'Ann Manager' });
   });
 
-  it('gives the same message for an unknown address as for a wrong password', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
-
-    const wrongPassword = await signIn(user.email, 'NotThePass1');
-    const unknownUser = await signIn('nobody@test.test', PASSWORD);
-
-    expect(wrongPassword.ok).toBe(false);
-    expect(unknownUser.ok).toBe(false);
-    if (!wrongPassword.ok && !unknownUser.ok) {
-      // Otherwise the response tells an attacker which addresses exist.
-      expect(wrongPassword.error).toBe(unknownUser.error);
-    }
+  it.each([
+    ['another directory', { iss: 'https://login.microsoftonline.com/other/v2.0' }, /different directory/],
+    ['another application', { aud: 'someone-else' }, /different application/],
+    ['another organisation', { tid: 'other-tenant' }, /different organisation/],
+    ['an expired token', { exp: Math.floor(Date.now() / 1000) - 3600 }, /expired/],
+    ['a replayed nonce', { nonce: 'old-nonce' }, /could not be matched/],
+    ['no account id', { oid: undefined }, /no account id/],
+  ])('refuses %s', async (_label, claims, message) => {
+    await expect(verifyIdToken(CFG, idToken(claims), 'nonce-1', fakeMicrosoft().http)).rejects.toThrow(message);
   });
 
-  it('refuses an account with no password set', async () => {
-    const user = makeUser();
-    const result = await signIn(user.email, PASSWORD);
-    expect(result.ok).toBe(false);
+  it('refuses a token signed with a key Microsoft does not publish', async () => {
+    const stranger = keyPair('key-1'); // same kid, different key
+    await expect(verifyIdToken(CFG, idToken({}, stranger), 'nonce-1', fakeMicrosoft().http)).rejects.toThrow(/signature is not valid/);
+    const unknown = keyPair('key-9');
+    await expect(verifyIdToken(CFG, idToken({}, unknown), 'nonce-1', fakeMicrosoft().http)).rejects.toThrow(/does not publish/);
   });
 
-  it('refuses a disabled account', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
-    setUserDisabled(user.id, true);
-
-    const result = await signIn(user.email, PASSWORD);
-    expect(result.ok).toBe(false);
+  it('picks up a newly rotated signing key without a restart', async () => {
+    const rotated = keyPair('key-2');
+    await verifyIdToken(CFG, idToken({}), 'nonce-1', fakeMicrosoft().http); // caches key-1 only
+    const claims = await verifyIdToken(CFG, idToken({}, rotated), 'nonce-1', fakeMicrosoft({ keys: [primary.jwk, rotated.jwk] }).http);
+    expect(claims.oid).toBe('oid-ann');
   });
 
-  it('refuses a system identity even if one somehow has a password', async () => {
-    const collector = makeUser({ role: 'system_mailbox_collector', name: 'Mailbox Collector' });
-    await setPassword(collector.id, PASSWORD);
-    const result = await signIn(collector.email, PASSWORD);
-    expect(result.ok).toBe(false);
+  it('exchanges the code with the verifier and verifies what comes back', async () => {
+    const { http, calls } = fakeMicrosoft();
+    const claims = await finishLogin(CFG, 'the-code', 'the-verifier', 'nonce-1', http);
+    expect(claims.email).toBe('ann@mp-real.com');
+    expect(calls[0]).toMatch(/oauth2\/v2\.0\/token$/);
+
+    await expect(finishLogin(CFG, 'bad', 'v', 'nonce-1', fakeMicrosoft({ tokenStatus: 400 }).http)).rejects.toBeInstanceOf(SignInError);
   });
 });
 
-/* -------------------------------- Throttling ---------------------------------- */
+/* ------------------------------ Who gets in ---------------------------------- */
 
-describe('throttling', () => {
-  it('locks the account after repeated failures, then refuses even the right password', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
+const claims = (over: Partial<IdClaims> = {}): IdClaims => ({ oid: 'oid-ann', tid: TENANT, email: 'ann@mp-real.com', name: 'Ann', ...over });
 
-    for (let i = 0; i < 8; i++) {
-      const attempt = await signIn(user.email, `WrongPass${i}0`);
-      expect(attempt.ok).toBe(false);
-    }
-
-    const locked = await signIn(user.email, PASSWORD);
-    expect(locked.ok).toBe(false);
-    if (!locked.ok) {
-      expect(locked.error).toMatch(/too many failed attempts/i);
-      expect(locked.retryAfterSeconds).toBeGreaterThan(0);
-    }
+describe('who may sign in', () => {
+  it('lets in a listed person and binds their Microsoft account on first sign-in', () => {
+    expect(personForSignIn(claims(), null).id).toBe(manager.user.id);
+    expect(getUser(manager.user.id)?.externalId).toBe('oid-ann');
   });
 
-  it('forgets the failures once a sign-in succeeds', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
+  it('refuses a different account that has taken the same email address', () => {
+    personForSignIn(claims(), null);
+    expect(() => personForSignIn(claims({ oid: 'oid-impostor' }), null)).toThrow(/different Microsoft account/);
+  });
 
-    for (let i = 0; i < 3; i++) await signIn(user.email, 'WrongOne99');
-    expect((await signIn(user.email, PASSWORD)).ok).toBe(true);
+  it('refuses someone not on the People list', () => {
+    expect(() => personForSignIn(claims({ email: 'stranger@mp-real.com', oid: 'x' }), null)).toThrow(NotAllowed);
+  });
 
-    clearAttempts(user.email);
-    for (let i = 0; i < 7; i++) await signIn(user.email, 'WrongOne99');
-    // Seven is still under the limit, so the right password works.
-    expect((await signIn(user.email, PASSWORD)).ok).toBe(true);
+  it('refuses a person whose access has been switched off', () => {
+    const off = person('Carl Coord', 'logistics_coordinator', [companyA], { disabled: true });
+    expect(() => personForSignIn(claims({ email: off.user.email, oid: 'oid-carl' }), null)).toThrow(/switched off/);
+  });
+
+  it('lets the bootstrap administrator in only while no manager exists', () => {
+    const admin = claims({ email: 'admin@mp-real.com', oid: 'oid-admin', name: 'First Admin' });
+    // A manager exists (Ann), so the bootstrap address gets nothing.
+    expect(() => personForSignIn(admin, 'admin@mp-real.com')).toThrow(NotAllowed);
+
+    setPersonDisabled(manager, person('Other Manager', 'logistics_manager', [companyA]).user.id, true);
+    useDb(openMemoryDb()); // a fresh, empty workspace
+    const created = personForSignIn(admin, 'admin@mp-real.com');
+    expect(created).toMatchObject({ role: 'logistics_manager', email: 'admin@mp-real.com', externalId: 'oid-admin' });
   });
 });
-
-/* --------------------------------- Sessions ----------------------------------- */
 
 describe('sessions', () => {
-  it('stores only the hash of the token', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    const rows = db().prepare('SELECT token_hash FROM sessions').all() as { token_hash: string }[];
-    expect(rows.length).toBe(1);
-    expect(rows[0].token_hash).not.toBe(token);
-    expect(rows[0].token_hash).toHaveLength(64); // sha-256 hex
+  it('resolve to the person, and stop working when their access is switched off', () => {
+    const coord = person('Carl Coord', 'logistics_coordinator', [companyA]);
+    const cookie = signToken({ uid: coord.user.id }, SECRET, 3600);
+    expect(ctxFromSession(cookie, SECRET)?.user.id).toBe(coord.user.id);
+
+    setPersonDisabled(manager, coord.user.id, true);
+    expect(ctxFromSession(cookie, SECRET)).toBeNull();
   });
 
-  it('rejects an unknown or empty token', () => {
-    makeUser();
-    expect(userForToken(undefined)).toBeNull();
-    expect(userForToken('')).toBeNull();
-    expect(userForToken('not-a-real-token')).toBeNull();
-  });
-
-  it('stops working once revoked', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    expect(userForToken(token)?.id).toBe(user.id);
-    revokeToken(token);
-    expect(userForToken(token)).toBeNull();
-  });
-
-  it('ends every session when the password changes', async () => {
-    const user = makeUser();
-    await setPassword(user.id, PASSWORD);
-    const a = createSession(user.id);
-    const b = createSession(user.id);
-
-    await setPassword(user.id, 'AnotherPass77');
-    expect(userForToken(a)).toBeNull();
-    expect(userForToken(b)).toBeNull();
-  });
-
-  it('stops working the moment the account is disabled', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    expect(userForToken(token)).not.toBeNull();
-
-    setUserDisabled(user.id, true);
-    // No waiting for expiry: a revoked person is out on their next request.
-    expect(userForToken(token)).toBeNull();
-  });
-
-  it('rejects a session past its absolute expiry', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    db()
-      .prepare('UPDATE sessions SET expires_at = ? WHERE user_id = ?')
-      .run(new Date(Date.now() - 1000).toISOString(), user.id);
-    expect(userForToken(token)).toBeNull();
-  });
-
-  it('rejects a session that has been idle too long', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    db()
-      .prepare('UPDATE sessions SET last_seen_at = ? WHERE user_id = ?')
-      .run(new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString(), user.id);
-    expect(userForToken(token)).toBeNull();
-  });
-
-  it('deletes the row it rejected, so a dead token is not checked twice', () => {
-    const user = makeUser();
-    const token = createSession(user.id);
-    revokeAllForUser(user.id);
-    expect(userForToken(token)).toBeNull();
-    const rows = db().prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number };
-    expect(rows.n).toBe(0);
+  it('never resolve to the Mailbox Collector or an unknown id', () => {
+    expect(ctxFromSession(signToken({ uid: 'system_mailbox_collector' }, SECRET, 3600), SECRET)).toBeNull();
+    expect(ctxFromSession(signToken({ uid: 'usr_nobody' }, SECRET, 3600), SECRET)).toBeNull();
   });
 });
 
-/* ------------------------------ First-run setup -------------------------------- */
+/* ------------------------------ Managing people ------------------------------ */
 
-describe('first run', () => {
-  it('is offered only while nobody can sign in', async () => {
-    expect(needsFirstRunSetup()).toBe(true);
+describe('the People screen rules', () => {
+  it('lets a manager add someone to a company they manage', () => {
+    const p = addPerson(manager, { name: 'Carl Coord', email: 'Carl@MP-Real.com', role: 'logistics_coordinator', companyIds: [companyA] });
+    expect(p).toMatchObject({ email: 'carl@mp-real.com', role: 'logistics_coordinator', companyIds: [companyA] });
+  });
 
-    const user = makeUser();
-    // An account with no password still cannot sign in, so setup is still needed.
-    expect(needsFirstRunSetup()).toBe(true);
+  it('only lets a manager hand out access they hold themselves', () => {
+    expect(() => addPerson(manager, { name: 'X', email: 'x@mp-real.com', role: 'viewer', companyIds: [companyB] })).toThrow(/do not have access/);
+  });
 
-    await setPassword(user.id, PASSWORD);
-    expect(needsFirstRunSetup()).toBe(false);
+  it('refuses a coordinator, a duplicate address and an unassignable role', () => {
+    const coord = person('Carl Coord', 'logistics_coordinator', [companyA]);
+    expect(() => addPerson(coord, { name: 'X', email: 'x@mp-real.com', role: 'viewer', companyIds: [companyA] })).toThrow(/Only a Logistics Operations Manager/);
+    expect(() => addPerson(manager, { name: 'Dup', email: 'ANN@mp-real.com', role: 'viewer', companyIds: [companyA] })).toThrow(/already in this workspace/);
+    expect(() =>
+      addPerson(manager, { name: 'Bot', email: 'bot@mp-real.com', role: 'system_mailbox_collector', companyIds: [companyA] }),
+    ).toThrow(/cannot be assigned/);
+  });
+
+  it('keeps access to companies the editing manager cannot see', () => {
+    const both = person('Bea Both', 'logistics_coordinator', [companyA, companyB]);
+    const updated = updatePerson(manager, both.user.id, { name: 'Bea Both', email: both.user.email, role: 'viewer', companyIds: [companyA] });
+    expect(updated.companyIds.sort()).toEqual([companyA, companyB].sort());
+    expect(updated.role).toBe('viewer');
+  });
+
+  it('stops a manager locking themselves out', () => {
+    expect(() => updatePerson(manager, manager.user.id, { name: 'Ann', email: manager.user.email, role: 'viewer', companyIds: [companyA] })).toThrow(/own role/);
+    expect(() => setPersonDisabled(manager, manager.user.id, true)).toThrow(/your own access/);
+  });
+
+  it('unbinds the Microsoft account when the email address changes', () => {
+    personForSignIn(claims(), null);
+    const coord = person('Carl Coord', 'logistics_coordinator', [companyA], { externalId: 'oid-carl' });
+    const moved = updatePerson(manager, coord.user.id, { name: 'Carl', email: 'carl.new@mp-real.com', role: 'logistics_coordinator', companyIds: [companyA] });
+    expect(moved.externalId).toBeNull();
   });
 });
 
-/* ------------------------------- Demo accounts ---------------------------------- */
-
-describe('the demonstration dataset', () => {
-  it('gives its accounts real hashed passwords, not a bypass', async () => {
-    const { seedDemo } = await import('@/freight/demo/seed');
-    const { DEMO_PASSWORD } = await import('@/freight/demo/fixtures');
-    const { users } = await seedDemo();
-
-    for (const u of users) {
-      const stored = db().prepare('SELECT password_hash FROM users WHERE id = ?').get(u.id) as {
-        password_hash: string | null;
-      };
-      expect(stored.password_hash, u.name).toBeTruthy();
-      expect(stored.password_hash, u.name).toContain('scrypt$');
-    }
-
-    const result = await signIn(users[0].email, DEMO_PASSWORD);
-    expect(result.ok).toBe(true);
-
-    const wrong = await signIn(users[0].email, 'NotTheDemoPass1');
-    expect(wrong.ok).toBe(false);
-  });
-
-  it('marks the workspace as demo data so the sign-in page may list the accounts', async () => {
-    const { seedDemo } = await import('@/freight/demo/seed');
-    await seedDemo();
-    const { getSetting } = await import('@/freight/db');
-    expect(getSetting('demo.mode', false)).toBe(true);
+describe('creating a company', () => {
+  it('gives the creator lasting access, not just for this request', () => {
+    const c = createCompany(manager, { code: 'CCC', name: 'Company C', country: 'Egypt', addressLines: ['1'] });
+    const reloaded: Ctx = { user: getUser(manager.user.id)! };
+    expect(listCompanies(reloaded).map((x) => x.id)).toContain(c.id);
   });
 });
-
-/* ---------------------- The authorisation checks still hold --------------------- */
-
-describe('authorisation is unchanged by authentication', () => {
-  it('a signed-in coordinator still cannot approve', async () => {
-    const { assertCanApprove } = await import('@/freight/repo');
-    const coordinator = makeUser({ role: 'logistics_coordinator', name: 'Karim' });
-    await setPassword(coordinator.id, PASSWORD);
-    const result = await signIn(coordinator.email, PASSWORD);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      const ctx: Ctx = { user: result.user };
-      expect(() => assertCanApprove(ctx)).toThrow(/Only the Logistics Operations Manager/i);
-    }
-  });
-
-  it('a signed-in user still only sees their own companies', async () => {
-    const { assertCompanyAccess } = await import('@/freight/repo');
-    const user = makeUser({ companyIds: ['co_a'] });
-    await setPassword(user.id, PASSWORD);
-    const result = await signIn(user.email, PASSWORD);
-    if (result.ok) {
-      const ctx: Ctx = { user: result.user };
-      expect(() => assertCompanyAccess(ctx, 'co_a')).not.toThrow();
-      expect(() => assertCompanyAccess(ctx, 'co_b')).toThrow(/do not have access/i);
-    }
-  });
-});
-

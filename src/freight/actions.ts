@@ -33,6 +33,8 @@ import { createComparison, prepareComparisonEmail } from './service/compare';
 import { queueSync, runSync } from './service/erp';
 import { collectInbox } from './service/collect';
 import { checkConnection } from './service/connections';
+import { addPerson, setPersonDisabled, updatePerson } from './auth/people';
+import { dismissRfqRequest } from './service/intake';
 import { setSetting } from './db';
 
 const lane = z.object({ originPort: z.string().min(2), destinationPort: z.string().min(2) });
@@ -178,7 +180,27 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('settings.reminders'), afterDays: z.number().int().min(1).max(30), maxRounds: z.number().int().min(0).max(5) }),
 
   z.object({ type: z.literal('mailbox.collect') }),
-  z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox']) }),
+
+  z.object({
+    type: z.literal('people.add'),
+    name: z.string(),
+    email: z.string(),
+    title: z.string().optional(),
+    role: z.enum(['logistics_manager', 'logistics_coordinator', 'viewer']),
+    companyIds: z.array(z.string()),
+  }),
+  z.object({
+    type: z.literal('people.update'),
+    userId: z.string(),
+    name: z.string(),
+    email: z.string(),
+    title: z.string().optional(),
+    role: z.enum(['logistics_manager', 'logistics_coordinator', 'viewer']),
+    companyIds: z.array(z.string()),
+  }),
+  z.object({ type: z.literal('people.setDisabled'), userId: z.string(), disabled: z.boolean() }),
+  z.object({ type: z.literal('rfqRequest.dismiss'), requestId: z.string() }),
+  z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox', 'erp']) }),
 
   z.object({
     type: z.literal('demo.deliverReply'),
@@ -455,11 +477,35 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
         message:
           run.outcome === 'skipped'
             ? (run.error ?? 'Nothing to collect.')
-            : run.filed === 0
+            : run.filed === 0 && run.rfqRequests === 0
               ? `No new replies${run.adapter === 'simulated' ? ' in the simulated mailbox' : ''}.`
-              : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person.`,
+              : `Collected ${run.filed} new repl${run.filed === 1 ? 'y' : 'ies'}: ${run.matched} matched, ${run.needsReview} waiting for a person${run.rfqRequests > 0 ? `; ${run.rfqRequests} emailed RFQ request${run.rfqRequests === 1 ? '' : 's'}` : ''}.`,
         data: run,
       };
+    }
+
+    case 'people.add': {
+      const person = addPerson(ctx, action);
+      return { ok: true, message: `Added ${person.name}. They can sign in with ${person.email}.`, data: person };
+    }
+
+    case 'people.update': {
+      const person = updatePerson(ctx, action.userId, action);
+      return { ok: true, message: `Updated ${person.name}.`, data: person };
+    }
+
+    case 'people.setDisabled': {
+      const person = setPersonDisabled(ctx, action.userId, action.disabled);
+      return {
+        ok: true,
+        message: action.disabled ? `Switched off access for ${person.name}.` : `Restored access for ${person.name}.`,
+        data: person,
+      };
+    }
+
+    case 'rfqRequest.dismiss': {
+      const request = dismissRfqRequest(ctx, action.requestId);
+      return { ok: true, message: 'Dismissed.', data: request };
     }
 
     case 'connection.check': {

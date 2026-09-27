@@ -260,6 +260,22 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS audit_company_at ON audit_events (company_id, at DESC);
 CREATE INDEX IF NOT EXISTS audit_subject ON audit_events (subject, at DESC);
 
+CREATE TABLE IF NOT EXISTS rfq_requests (
+  id TEXT PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  from_email TEXT NOT NULL,
+  user_id TEXT,
+  subject TEXT NOT NULL,
+  received_at TEXT NOT NULL,
+  body_text TEXT NOT NULL,
+  status TEXT NOT NULL,
+  rfq_ids TEXT NOT NULL,
+  problems TEXT NOT NULL,
+  company_ids TEXT NOT NULL,
+  simulated INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -290,34 +306,35 @@ export function db(): DatabaseSync {
   return handle;
 }
 
-/**
- * Brings a database created before a schema change up to date.
- *
- * `CREATE TABLE IF NOT EXISTS` does nothing for a table that already exists, so
- * columns added later need adding explicitly. Each step checks first, so this
- * is safe to run on every start.
- */
-function migrate(handle: DatabaseSync): void {
-  const columns = (table: string): string[] =>
-    (handle.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
-
-  const userColumns = columns('users');
-  const additions: [string, string][] = [
-    ['password_hash', 'ALTER TABLE users ADD COLUMN password_hash TEXT'],
-    ['password_set_at', 'ALTER TABLE users ADD COLUMN password_set_at TEXT'],
-    ['disabled', 'ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0'],
-  ];
-  for (const [column, sql] of additions) {
-    if (!userColumns.includes(column)) handle.exec(sql);
-  }
-}
-
 /** An isolated in-memory database. Used by the tests so they never touch disk. */
 export function openMemoryDb(): DatabaseSync {
   const handle = new DatabaseSync(':memory:');
   handle.exec(SCHEMA);
   migrate(handle);
   return handle;
+}
+
+/**
+ * Additive changes to databases created by an earlier version. Each step checks
+ * before it acts, so running it on every start is safe.
+ */
+function migrate(handle: DatabaseSync): void {
+  const userColumns = new Set(
+    (handle.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!userColumns.has('disabled')) handle.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+  if (!userColumns.has('external_id')) handle.exec('ALTER TABLE users ADD COLUMN external_id TEXT');
+  // Password mode: null means the account exists but cannot sign in with one.
+  if (!userColumns.has('password_hash')) handle.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+  if (!userColumns.has('password_set_at')) handle.exec('ALTER TABLE users ADD COLUMN password_set_at TEXT');
+  // Sign-in finds a person by email, so an address may belong to one person only.
+  try {
+    handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email))');
+  } catch {
+    // An older database with duplicate addresses keeps working; the People
+    // screen refuses to create new duplicates.
+  }
+  handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_external_id_key ON users (external_id) WHERE external_id IS NOT NULL');
 }
 
 /** Point the module-wide handle at a specific database. Tests only. */
@@ -390,6 +407,7 @@ export function truncateAll(): void {
     'comparisons',
     'quotes',
     'inbound_messages',
+    'rfq_requests',
     'emails',
     'rfq_recipients',
     'rfqs',

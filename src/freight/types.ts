@@ -51,10 +51,16 @@ export interface User {
   role: UserRole;
   /** Company ids this user may act on. Enforced server-side on every request. */
   companyIds: Id[];
-  /** A disabled account cannot sign in, and its sessions stop working at once. */
+  /** A disabled person cannot sign in, and an existing session stops working. */
   disabled?: boolean;
-  /** False when the account exists but no password has been set yet. */
+  /** False when the account exists but no password has been set. Password mode. */
   canSignIn?: boolean;
+  /**
+   * The identity provider's immutable id (Entra `oid`), bound at first sign-in.
+   * After that, a sign-in must carry the same id, so renaming someone else's
+   * account to this email address does not grant this person's access.
+   */
+  externalId?: string | null;
 }
 
 /* ------------------------------- Companies --------------------------------- */
@@ -332,6 +338,31 @@ export interface EmailDraft {
 /* ------------------------------ Inbound mail -------------------------------- */
 
 export type MatchStatus = 'matched' | 'ambiguous' | 'unmatched';
+
+/**
+ * A shipping requirement a colleague emailed in (W5, RFQ_EMAIL_INTAKE=on).
+ * Kept separately from provider replies: it creates draft RFQs, never quotes.
+ */
+export interface RfqRequest {
+  id: Id;
+  /** Transport message id; collecting the same email twice creates nothing new. */
+  externalId: string;
+  fromEmail: string;
+  /** The workspace person it was accepted from, when the sender is one. */
+  userId: Id | null;
+  subject: string;
+  receivedAt: Instant;
+  bodyText: string;
+  status: 'created' | 'needs_attention' | 'dismissed';
+  /** Draft RFQs created from it. */
+  rfqIds: Id[];
+  /** Why it could not be turned into an RFQ, in plain language. */
+  problems: string[];
+  /** Companies it may be shown to: the sender's, or the one it was filed under. */
+  companyIds: Id[];
+  simulated: boolean;
+  createdAt: Instant;
+}
 
 export interface MatchCandidate {
   rfqId: Id;

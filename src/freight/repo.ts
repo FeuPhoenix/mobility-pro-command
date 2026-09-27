@@ -35,6 +35,7 @@ import type {
   Recipient,
   Rfq,
   RfqRecipient,
+  RfqRequest,
   Surcharge,
   User,
 } from './types';
@@ -127,13 +128,28 @@ export function getUser(id: Id): User | null {
 export function insertUser(u: User): void {
   db()
     .prepare(
-      'INSERT INTO users (id, name, title, email, role, company_ids, disabled) VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO users (id, name, title, email, role, company_ids, disabled, external_id) VALUES (?,?,?,?,?,?,?,?)',
     )
-    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0);
+    .run(u.id, u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0, u.externalId ?? null);
+}
+
+export function updateUser(u: User): void {
+  db()
+    .prepare(
+      'UPDATE users SET name = ?, title = ?, email = ?, role = ?, company_ids = ?, disabled = ?, external_id = ? WHERE id = ?',
+    )
+    .run(u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0, u.externalId ?? null, u.id);
 }
 
 export function setUserDisabled(id: Id, disabled: boolean): void {
   db().prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, id);
+}
+
+export function findUserByEmail(email: string): User | null {
+  const row = db().prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email.trim()) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? rowToUser(row) : null;
 }
 
 function rowToUser(r: Record<string, unknown>): User {
@@ -147,6 +163,7 @@ function rowToUser(r: Record<string, unknown>): User {
     disabled: bool(r.disabled),
     // Never leak the hash itself; the screens only need to know if sign-in works.
     canSignIn: Boolean(str(r.password_hash)),
+    externalId: str(r.external_id),
   };
 }
 
@@ -1091,6 +1108,59 @@ function rowToSync(r: Record<string, unknown>): ErpSync {
     completedAt: str(r.completed_at),
     createdAt: r.created_at as string,
   };
+}
+
+/* ------------------------------- RFQ requests -------------------------------- */
+
+function rowToRfqRequest(r: Record<string, unknown>): RfqRequest {
+  return {
+    id: r.id as string,
+    externalId: r.external_id as string,
+    fromEmail: r.from_email as string,
+    userId: str(r.user_id),
+    subject: r.subject as string,
+    receivedAt: r.received_at as string,
+    bodyText: r.body_text as string,
+    status: r.status as RfqRequest['status'],
+    rfqIds: json<string[]>(r.rfq_ids, []),
+    problems: json<string[]>(r.problems, []),
+    companyIds: json<string[]>(r.company_ids, []),
+    simulated: bool(r.simulated),
+    createdAt: r.created_at as string,
+  };
+}
+
+export function findRfqRequestByExternalId(externalId: string): RfqRequest | null {
+  const row = db().prepare('SELECT * FROM rfq_requests WHERE external_id = ?').get(externalId) as
+    | Record<string, unknown>
+    | undefined;
+  return row ? rowToRfqRequest(row) : null;
+}
+
+export function insertRfqRequest(r: RfqRequest): void {
+  db()
+    .prepare(
+      'INSERT INTO rfq_requests (id, external_id, from_email, user_id, subject, received_at, body_text, status, rfq_ids, problems, company_ids, simulated, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    )
+    .run(
+      r.id, r.externalId, r.fromEmail, r.userId, r.subject, r.receivedAt, r.bodyText, r.status,
+      JSON.stringify(r.rfqIds), JSON.stringify(r.problems), JSON.stringify(r.companyIds), r.simulated ? 1 : 0, r.createdAt,
+    );
+}
+
+export function setRfqRequestStatus(id: Id, status: RfqRequest['status']): void {
+  db().prepare('UPDATE rfq_requests SET status = ? WHERE id = ?').run(status, id);
+}
+
+/** Requests the acting person may see: those touching one of their companies. */
+export function listRfqRequests(ctx: Ctx, limit = 50): RfqRequest[] {
+  const rows = db().prepare('SELECT * FROM rfq_requests ORDER BY received_at DESC LIMIT ?').all(limit) as Record<string, unknown>[];
+  return rows.map(rowToRfqRequest).filter((r) => r.companyIds.some((c) => ctx.user.companyIds.includes(c)));
+}
+
+export function getRfqRequest(id: Id): RfqRequest | null {
+  const row = db().prepare('SELECT * FROM rfq_requests WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return row ? rowToRfqRequest(row) : null;
 }
 
 /* ---------------------------------- Audit ------------------------------------ */

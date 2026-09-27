@@ -35,7 +35,7 @@ import { ingestMessage, reviewQuote } from '../service/inbox';
 import { createComparison, prepareComparisonEmail } from '../service/compare';
 import { queueSync, runSync } from '../service/erp';
 import { listCompanyProviders, listRfqs } from '../repo';
-import { setPassword } from '../auth';
+import { setPassword } from '../auth/password';
 import {
   COMPANIES,
   DEMO_PASSWORD,
