@@ -27,6 +27,12 @@
  */
 
 import type { Comparison, Rfq } from '../types';
+import {
+  quotationPayload,
+  quotationFieldNames,
+  QUOTATION_CHARGE_FIELDS,
+  type QuotationRecordInput,
+} from './erpquotation';
 import { getSetting } from '../db';
 
 export interface ErpRecordInput {
@@ -80,7 +86,10 @@ export interface ErpStatus {
 export interface ErpAdapter {
   status(): ErpStatus;
   probe(): Promise<ErpStatus>;
+  /** The comparison outcome. Still available; no longer the primary destination. */
   record(input: ErpRecordInput): Promise<ErpResult>;
+  /** One raw quotation. The destination the customer chose. */
+  recordQuotation(input: QuotationRecordInput): Promise<ErpResult>;
 }
 
 /* ------------------------------- Simulated ---------------------------------- */
@@ -143,6 +152,22 @@ export class SimulatedErp implements ErpAdapter {
       updatedExisting: seen > (this.failFirstAttempt ? 2 : 1),
     };
   }
+
+  async recordQuotation(input: QuotationRecordInput): Promise<ErpResult> {
+    if (this.failFirstAttempt && input.attempt === 1) {
+      throw new ErpFailure(
+        'The ERPNext request timed out after 30 seconds (simulated). Nothing was written. This can be retried safely: the record carries an idempotency key, so a retry will not create a duplicate.',
+        true,
+      );
+    }
+    return {
+      doctype: 'Freight Quotation (simulated)',
+      remoteName: `SIM-FQ-${input.rfq.reference}-${input.providerName}-v${input.quote.version}`.replace(/\s+/g, '-'),
+      remoteUrl: null,
+      simulated: true,
+      updatedExisting: input.attempt > (this.failFirstAttempt ? 2 : 1),
+    };
+  }
 }
 
 /* ---------------------------------- Live ------------------------------------ */
@@ -152,6 +177,8 @@ interface LiveConfig {
   apiKey: string;
   apiSecret: string;
   doctype: string | null;
+  /** Where raw quotations go. The destination the customer chose. */
+  quotationDoctype: string | null;
   /** Company code here -> exact Company name in ERPNext. Missing codes use the name. */
   companyMap: Record<string, string>;
 }
@@ -189,6 +216,7 @@ export function liveConfig(): { config: LiveConfig | null; missing: string[] } {
       apiKey: apiKey!,
       apiSecret: apiSecret!,
       doctype: process.env.ERPNEXT_DOCTYPE || null,
+      quotationDoctype: process.env.ERPNEXT_QUOTATION_DOCTYPE || null,
       companyMap: companies.map,
     },
     missing: [],
@@ -262,6 +290,8 @@ interface DocField {
   fieldtype: string;
   options?: string | null;
   unique?: number;
+  /** Mandatory. A mandatory charge amount would turn "not stated" into zero. */
+  reqd?: number;
 }
 
 /**
@@ -307,6 +337,55 @@ export function destinationProblems(
     const childMissing = OFFER_FIELDS.filter((f) => !childNames.has(f));
     if (childMissing.length > 0) {
       problems.push(`The "${childDoctype}" child table is missing: ${childMissing.join(', ')}.`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * The same guard, for the quotation destination.
+ *
+ * Frappe silently drops unknown fields, so a DocType missing a column would
+ * lose data while reporting success. Checked on every write, not once at setup.
+ */
+export function quotationDestinationProblems(
+  doctype: string,
+  parentFields: DocField[],
+  childFields: DocField[] | null,
+  childDoctype: string | null,
+): string[] {
+  const problems: string[] = [];
+  const byName = new Map(parentFields.map((f) => [f.fieldname, f]));
+
+  const key = byName.get('freight_idempotency_key');
+  if (!key) {
+    problems.push(`"${doctype}" has no freight_idempotency_key field, so a retry could create a duplicate. Add it as a Data field marked Unique.`);
+  } else if (!key.unique) {
+    problems.push(`freight_idempotency_key on "${doctype}" is not marked Unique. Mark it Unique so ERPNext itself refuses a duplicate.`);
+  }
+
+  const missing = quotationFieldNames().filter(
+    (k) => k !== 'charges' && k !== 'freight_idempotency_key' && !byName.has(k),
+  );
+  if (missing.length > 0) {
+    problems.push(`"${doctype}" is missing ${missing.length} field${missing.length === 1 ? '' : 's'} this application writes, which ERPNext would silently drop: ${missing.join(', ')}.`);
+  }
+
+  const charges = byName.get('charges');
+  if (!charges || charges.fieldtype !== 'Table') {
+    problems.push(`"${doctype}" has no "charges" child table, so every surcharge would be lost.`);
+  } else if (!childFields) {
+    problems.push(`The child table "${childDoctype ?? charges.options}" behind "charges" could not be read.`);
+  } else {
+    const childNames = new Set(childFields.map((f) => f.fieldname));
+    const childMissing = QUOTATION_CHARGE_FIELDS.filter((f) => !childNames.has(f));
+    if (childMissing.length > 0) {
+      problems.push(`The "${childDoctype}" child table is missing: ${childMissing.join(', ')}.`);
+    }
+    const amount = childFields.find((f) => f.fieldname === 'amount');
+    // A required or defaulted amount turns "the provider did not say" into zero.
+    if (amount?.reqd) {
+      problems.push(`"amount" on "${childDoctype}" is mandatory. A provider naming a charge without pricing it must be storable as empty, not zero.`);
     }
   }
   return problems;
@@ -523,6 +602,99 @@ export class LiveErp implements ErpAdapter {
       simulated: false,
       updatedExisting,
     };
+  }
+
+  async recordQuotation(input: QuotationRecordInput): Promise<ErpResult> {
+    const doctype = this.cfg.quotationDoctype;
+    if (!doctype) {
+      throw new ErpFailure(
+        'No ERPNext destination for quotations has been set, so nothing was written.',
+        false,
+        [
+          'Create the Freight Quotation DocType (scripts/erpnext/freight-quotation-doctype.mjs).',
+          'Then set ERPNEXT_QUOTATION_DOCTYPE to its name.',
+        ],
+      );
+    }
+
+    // Verified on every write, not once at setup: a field removed in ERPNext
+    // afterwards must stop the write rather than quietly lose a column.
+    const problems = await this.guarded('read the quotation DocType', () =>
+      this.checkQuotationDestination(doctype),
+    );
+    if (problems.length > 0) {
+      throw new ErpFailure(
+        `The ERPNext destination "${doctype}" is not ready, so nothing was written.`,
+        false,
+        problems,
+      );
+    }
+
+    const payload = {
+      ...quotationPayload(input),
+      company: this.cfg.companyMap[input.company.code] ?? input.company.name,
+    };
+
+    let existingName = await this.findExisting(doctype, input.idempotencyKey);
+    let updatedExisting = existingName !== null;
+
+    let res = await this.guarded('write the quotation', () =>
+      this.http(existingName ? this.resource(doctype, existingName) : this.resource(doctype), {
+        method: existingName ? 'PUT' : 'POST',
+        headers: this.headers(),
+        body: JSON.stringify(payload),
+      }),
+    );
+
+    // Two retries raced and the other inserted first; update the winner.
+    if (!existingName && (await isDuplicate(res))) {
+      existingName = await this.findExisting(doctype, input.idempotencyKey);
+      if (!existingName) {
+        throw new ErpFailure(
+          'ERPNext reported a duplicate, but the existing record could not be found. Retry shortly.',
+          true,
+        );
+      }
+      updatedExisting = true;
+      res = await this.guarded('update the existing quotation', () =>
+        this.http(this.resource(doctype, existingName!), {
+          method: 'PUT',
+          headers: this.headers(),
+          body: JSON.stringify(payload),
+        }),
+      );
+    }
+
+    if (!res.ok) throw await refusal(res);
+
+    const data = (await res.json()) as { data?: { name?: string } };
+    const remoteName = data.data?.name ?? existingName ?? input.idempotencyKey;
+
+    return {
+      doctype,
+      remoteName,
+      remoteUrl: `${this.cfg.baseUrl}/app/${doctype.toLowerCase().replace(/\s+/g, '-')}/${encodeURIComponent(remoteName)}`,
+      simulated: false,
+      updatedExisting,
+    };
+  }
+
+  /** Reads the quotation DocType and its charges child table. */
+  private async checkQuotationDestination(doctype: string): Promise<string[]> {
+    const meta = await this.http(this.resource('DocType', doctype), { headers: this.headers() });
+    if (!meta.ok) {
+      return [
+        `The DocType "${doctype}" was not found on this instance (${meta.status}). Create it with scripts/erpnext/freight-quotation-doctype.mjs, or point ERPNEXT_QUOTATION_DOCTYPE at the agreed destination.`,
+      ];
+    }
+    const parent = ((await meta.json()) as { data?: { fields?: DocField[] } }).data?.fields ?? [];
+    const table = parent.find((f) => f.fieldname === 'charges' && f.fieldtype === 'Table');
+    let child: DocField[] | null = null;
+    if (table?.options) {
+      const childMeta = await this.http(this.resource('DocType', table.options), { headers: this.headers() });
+      if (childMeta.ok) child = ((await childMeta.json()) as { data?: { fields?: DocField[] } }).data?.fields ?? [];
+    }
+    return quotationDestinationProblems(doctype, parent, child, table?.options ?? null);
   }
 
   /**

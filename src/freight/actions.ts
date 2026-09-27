@@ -31,6 +31,7 @@ import { approveEmail, editEmail, requestApproval, sendApproved, sendEmail, unap
 import { assignMessage, ingestMessage, markDeclined, reviewQuote } from './service/inbox';
 import { createComparison, prepareComparisonEmail } from './service/compare';
 import { queueSync, runSync } from './service/erp';
+import { syncQuotation, syncRfqQuotations } from './service/erpQuotations';
 import { collectInbox } from './service/collect';
 import { checkConnection } from './service/connections';
 import { addPerson, setPersonDisabled, updatePerson } from './auth/people';
@@ -162,6 +163,8 @@ export const ActionSchema = z.discriminatedUnion('type', [
 
   z.object({ type: z.literal('erp.queue'), comparisonId: z.string() }),
   z.object({ type: z.literal('erp.sync'), comparisonId: z.string() }),
+  z.object({ type: z.literal('erp.syncQuotations'), rfqId: z.string() }),
+  z.object({ type: z.literal('erp.syncQuotation'), quoteId: z.string() }),
 
   z.object({ type: z.literal('settings.criteria'), criteria: z.object({
     weightCost: z.number().min(0),
@@ -445,6 +448,32 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
           ? 'Recorded locally. This is a simulated record - nothing was written to ERPNext.'
           : `Recorded in ERPNext as ${result.sync.remoteName}.`,
         data: result.sync,
+      };
+    }
+
+    case 'erp.syncQuotations': {
+      const summary = await syncRfqQuotations(ctx, action.rfqId);
+      const parts = [`Recorded ${summary.recorded} quotation${summary.recorded === 1 ? '' : 's'}`];
+      if (summary.failed > 0) parts.push(`${summary.failed} failed`);
+      if (summary.skipped.length > 0) parts.push(`${summary.skipped.length} not eligible yet`);
+      return { ok: true, message: `${parts.join(', ')}.`, data: summary };
+    }
+
+    case 'erp.syncQuotation': {
+      const outcome = await syncQuotation(ctx, action.quoteId);
+      if (outcome.skipped) {
+        throw new FreightError(outcome.skipped, 409, 'not_eligible');
+      }
+      if (!outcome.ok) {
+        throw new FreightError(outcome.error ?? 'The quotation could not be recorded.', 502, 'erp_failed');
+      }
+      return {
+        ok: true,
+        message:
+          outcome.sync.adapter === 'simulated'
+            ? 'Recorded locally. This is a simulated record - nothing was written to ERPNext.'
+            : `Recorded in ERPNext as ${outcome.sync.remoteName}.`,
+        data: outcome.sync,
       };
     }
 

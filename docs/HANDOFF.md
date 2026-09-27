@@ -125,9 +125,12 @@ is the definition, and `docs/FREIGHT_ERPNEXT.md` section 1 is the field list to
 hand their team. Add the unique index on `freight_idempotency_key`, and keep
 `amount` optional with no default.
 
-Still to write on our side: the sync service that walks confirmed quotations and
-writes them, alongside the existing comparison sync. The payload, the guard and
-the DocType are done and tested.
+Our side is written: `src/freight/service/erpQuotations.ts` walks the confirmed
+quotations of a request and writes one record per quotation *version*, keyed by
+a hash of the quote id so a retry updates rather than duplicating. Actions
+`erp.syncQuotations` and `erp.syncQuotation`; state in `erp_quote_syncs`.
+Covered by `tests/erpnext-quotation-sync.test.ts`. What is left on this item is
+theirs: create the DocType, then run it once against a real instance.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 

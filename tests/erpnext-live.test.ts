@@ -11,7 +11,14 @@ import { LiveErp, destinationProblems, erpPayload, type ErpRecordInput } from '@
 import { childDoctype, parentDoctype, PARENT, CHILD } from '../scripts/erpnext/freight-comparison-doctype.mjs';
 
 const BASE = 'https://erp.mp-real.com';
-const CFG = { baseUrl: BASE, apiKey: 'k', apiSecret: 's', doctype: PARENT, companyMap: {} as Record<string, string> };
+const CFG = {
+  baseUrl: BASE,
+  apiKey: 'k',
+  apiSecret: 's',
+  doctype: PARENT,
+  quotationDoctype: 'Freight Quotation',
+  companyMap: {} as Record<string, string>,
+};
 
 const parentFields = parentDoctype({ module: 'Buying', supplierLink: false }).fields;
 const childFields = childDoctype({ module: 'Buying' }).fields;

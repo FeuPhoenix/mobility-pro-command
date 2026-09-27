@@ -246,6 +246,28 @@ CREATE TABLE IF NOT EXISTS erp_syncs (
   created_at TEXT NOT NULL
 );
 
+-- One row per quotation version written to ERPNext. Separate from erp_syncs
+-- because that table is keyed to a comparison, and a quotation is a different
+-- thing with its own lifecycle: it can be written long before any comparison.
+CREATE TABLE IF NOT EXISTS erp_quote_syncs (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  quote_id TEXT NOT NULL UNIQUE REFERENCES quotes(id) ON DELETE CASCADE,
+  adapter TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  doctype TEXT,
+  remote_name TEXT,
+  remote_url TEXT,
+  last_error TEXT,
+  setup_requirements TEXT NOT NULL,
+  last_attempt_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS erp_quote_syncs_company ON erp_quote_syncs (company_id);
+
 CREATE TABLE IF NOT EXISTS audit_events (
   id TEXT PRIMARY KEY,
   company_id TEXT,
@@ -401,6 +423,7 @@ export function truncateAll(): void {
   const handle = db();
   const tables = [
     'sessions',
+    'erp_quote_syncs',
     'login_attempts',
     'audit_events',
     'erp_syncs',
