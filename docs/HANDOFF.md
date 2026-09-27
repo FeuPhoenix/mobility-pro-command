@@ -174,8 +174,12 @@ terminate with a proxy that sets `x-forwarded-proto` or set
 database: the attachments sit beside it. `docs/FREIGHT_GO_LIVE.md` section F is
 the checklist.
 
-**The image has never been built** — Docker Desktop was not running on the
-machine this was written on. Build it once before trusting it.
+**Verified on 27 September:** the image builds, the container serves the
+workspace, `/api/freight/health` answers `{"ok":true}`, the demonstration data
+survives `docker restart` on its volume, Docker reports the container `healthy`,
+and `docker exec mpc-test node scripts/backup.mjs` writes a snapshot to the
+volume. What has *not* been proved is the rest of a deployment: TLS, a real
+host, and a restore.
 
 ### F. Real accounts
 

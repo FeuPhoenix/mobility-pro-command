@@ -137,6 +137,9 @@ A container definition and its storage are in the repository now:
    it.
 5. Restore-test it once, before there is anything worth losing.
 
+The image, the volume, the health check and the in-container backup were all
+exercised locally on 27 September. TLS, a real host and a restore were not.
+
 **Done when:** `/api/freight/health` answers `{"ok":true}` through the proxy,
 sign-in works over HTTPS, the container survives `docker compose restart` with
 its data, and a backup has been restored into a throwaway copy and opened.
