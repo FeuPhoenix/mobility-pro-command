@@ -307,6 +307,38 @@ describe.skipIf(!configured)('the comparison destination, against a real instanc
     expect(doc.offers.find((o) => o.provider === 'Nile Star Logistics')?.comparable).toBe(1);
   });
 
+  it('attaches the comparison workbook, and does not attach it twice', async () => {
+    // The upload path had never run against a real Frappe: multipart, a private
+    // file, and the duplicate check that makes a retry safe.
+    const key = `${KEY_PREFIX}-cmp-file`;
+    const withBook = {
+      ...(comparisonInput(key) as Record<string, unknown>),
+      workbook: {
+        filename: `Freight comparison ${key}.xlsx`,
+        content: Buffer.from('PK not a real workbook, but a real upload'),
+      },
+    } as never;
+
+    const first = await comparisonErp().record(withBook);
+
+    const filters = encodeURIComponent(
+      JSON.stringify([
+        ['attached_to_doctype', '=', COMPARISON_DOCTYPE],
+        ['attached_to_name', '=', first.remoteName],
+      ]),
+    );
+    const listFiles = async () => {
+      const res = await fetch(`${BASE}/api/resource/File?filters=${filters}&limit_page_length=0`, { headers });
+      return ((await res.json()) as { data: unknown[] }).data;
+    };
+
+    expect(await listFiles()).toHaveLength(1);
+
+    // A retry must not leave the record with the same workbook attached twice.
+    await comparisonErp().record(withBook);
+    expect(await listFiles()).toHaveLength(1);
+  });
+
   it('updates on a retry instead of writing a second comparison', async () => {
     const key = `${KEY_PREFIX}-cmp-retry`;
     const first = await comparisonErp().record(comparisonInput(key));

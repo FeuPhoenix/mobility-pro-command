@@ -160,7 +160,9 @@ quotations as `live` (not simulated), and a repeated sync writing nothing new. `
 theirs once the DocType exists; it is the fastest way to know the integration
 holds.
 
-Both destinations have now been verified this way, quotations and comparison.
+Both destinations have now been verified this way, quotations and comparison,
+including the workbook upload (multipart, private file, and the duplicate check
+that stops a retry attaching it twice).
 Four things only the real instance found, all now fixed:
 
 - **Frappe cannot store an empty number.** Our carefully sent `null` became
