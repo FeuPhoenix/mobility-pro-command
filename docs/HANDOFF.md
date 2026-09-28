@@ -38,8 +38,8 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 355 unit tests, 6 skipped without a live ERPNext
-npm run test:e2e         # 24 browser tests + 4 skipped, needs a build first
+npm test                 # 369 unit tests, 9 skipped without a live ERPNext
+npm run test:e2e         # 25 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```
 
@@ -74,10 +74,12 @@ test.**
    endpoint needs a session. The token-protected automation endpoints are the
    deliberate exception, and run as system identities. `AUTH_MODE=demo` is the
    picker and is a demonstration control only.
-9. **Only checked quotations reach ERPNext**, and each revision is its own
-   record. A missing charge is sent as null — but Frappe stores a Float as 0
-   regardless, so `amount_missing` and `unstated_numbers` carry the difference.
-   Their reports must read those, and `docs/FREIGHT_ERPNEXT.md` says so.
+9. **A charge the reader cannot place is shown to a person**, never dropped.
+10. **Only checked quotations reach ERPNext**, and each revision is its own
+    record. A missing charge is sent as null — but Frappe stores a Float as 0
+    regardless, so `amount_missing` and `unstated_numbers` carry the
+    difference. Their reports must read those, and `docs/FREIGHT_ERPNEXT.md`
+    says so.
 
 ---
 
@@ -126,6 +128,13 @@ mail, so a misconfiguration cannot reach a real provider.
 ## 5. The work left, in priority order
 
 ### A. Validate extraction against the customer's real quotations — *next*
+
+Before they arrive, one thing was done to make that exercise safe: **a line
+carrying an amount that matches no charge rule is reported rather than
+dropped.** It appears under *Lines with an amount that were not recognised* on
+the quote, and the summary stops saying "All figures read cleanly". Meeting an
+unfamiliar charge is expected with every new provider; losing it in silence made
+an offer look cheaper than it was, and nobody reviewing could tell.
 
 He is sending sample replies as `.eml`. Load them from **Replies → Load .eml
 files**; they go through the same matching and extraction as live mail. Expect
