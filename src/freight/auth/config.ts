@@ -4,6 +4,9 @@
  *   AUTH_MODE=demo  (default) The "Acting as" picker. A demonstration control,
  *                   labelled as one. Anyone who can reach the server can act as
  *                   anyone. Never use it with real data on a reachable server.
+ *   AUTH_MODE=password  Email and password held here, hashed with scrypt, with
+ *                   revocable sessions. For a deployment that cannot use Entra,
+ *                   or is not willing to wait for the tenant work.
  *   AUTH_MODE=entra Sign in with Microsoft (Entra ID, OpenID Connect with
  *                   PKCE). Only people added on the People screen get in.
  *
@@ -12,10 +15,12 @@
  * demo picker.
  */
 
-export type AuthMode = 'demo' | 'entra';
+export type AuthMode = 'demo' | 'password' | 'entra';
 
 export function authMode(): AuthMode {
-  return process.env.AUTH_MODE === 'entra' ? 'entra' : 'demo';
+  if (process.env.AUTH_MODE === 'entra') return 'entra';
+  if (process.env.AUTH_MODE === 'password') return 'password';
+  return 'demo';
 }
 
 export interface EntraConfig {

@@ -20,7 +20,7 @@ const NAV = [
 ];
 
 export function FreightShell({ children }: { children: React.ReactNode }) {
-  const { state, loading, error, busy, companyId, setCompanyId, switchUser, loadDemo, toasts, dismissToast } =
+  const { state, loading, error, busy, companyId, setCompanyId, signOut, switchUser, loadDemo, toasts, dismissToast } =
     useFreight();
   const pathname = usePathname();
   const [confirmDemo, setConfirmDemo] = React.useState(false);
@@ -41,6 +41,11 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
 
   const isActive = (item: (typeof NAV)[number]) =>
     item.exact ? pathname === item.href : pathname.startsWith(item.href);
+
+  // The sign-in screen is the one page inside this route group that must render
+  // without the workspace around it - there is no signed-in person yet.
+  // (Every hook above still runs, so the hook order is unchanged.)
+  if (pathname === '/freight/login') return <>{children}</>;
 
   return (
     <div className="shell">

@@ -38,6 +38,7 @@ import {
   getSyncByComparison,
   type Ctx,
 } from './repo';
+import { quoteSyncFor, quotationBlockedReason, type QuoteSync } from './service/erpQuotations';
 import { approvalIsCurrent } from './domain/email';
 import { uncertainFields } from './domain/extraction';
 import { mailStatusForDisplay } from './adapters/mail';
@@ -48,6 +49,28 @@ import { pollSeconds } from './schedule';
 import { erpStatusForDisplay } from './adapters/erpnext';
 import { aiStatusForDisplay } from './adapters/ai';
 import { getSetting } from './db';
+
+/**
+ * Everything a workflow may call, shown in Settings so the seam is visible
+ * rather than buried in documentation. Nothing here sends or approves.
+ */
+export interface AutomationEndpoint {
+  method: 'GET' | 'POST';
+  path: string;
+  purpose: string;
+  /** False for a pure read. True never means "may send an email". */
+  writes: boolean;
+}
+
+export const AUTOMATION_ENDPOINTS: readonly AutomationEndpoint[] = [
+  { method: 'POST', path: '/api/freight/collect', purpose: 'Collect replies from the shared mailbox.', writes: true },
+  { method: 'GET', path: '/api/freight/automation/summary', purpose: 'One-call summary for a briefing.', writes: false },
+  { method: 'GET', path: '/api/freight/automation/approvals', purpose: 'What is waiting for the manager to approve.', writes: false },
+  { method: 'GET', path: '/api/freight/automation/reminders', purpose: 'Which providers are due a chase, and why.', writes: false },
+  { method: 'POST', path: '/api/freight/automation/reminders', purpose: 'Prepare draft reminders. They still need approval.', writes: true },
+  { method: 'GET', path: '/api/freight/automation/erpnext', purpose: 'Records that have not reached ERPNext.', writes: false },
+  { method: 'POST', path: '/api/freight/automation/erpnext', purpose: 'Retry the records that can safely be retried.', writes: true },
+];
 
 export interface ApprovalItem {
   emailId: Id;
@@ -312,6 +335,20 @@ export interface QuoteView {
   message: InboundMessage | null;
 }
 
+/**
+ * One line per quotation on the Record tab.
+ *
+ * `blockedReason` carries the words for a quotation that cannot be written, so
+ * the screen explains a missing record rather than leaving a silent gap.
+ */
+export interface QuoteSyncView {
+  quoteId: Id;
+  providerName: string;
+  version: number;
+  blockedReason: string | null;
+  sync: QuoteSync | null;
+}
+
 export interface RfqDetail {
   rfq: Rfq;
   companyName: string;
@@ -320,6 +357,7 @@ export interface RfqDetail {
   emails: EmailDraft[];
   comparison: Comparison | null;
   sync: ErpSync | null;
+  quoteSyncs: QuoteSyncView[];
   timeline: { at: string; summary: string; actor: string; action: string }[];
 }
 
@@ -365,6 +403,18 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
       message: q.sourceMessageId ? (inbound.find((m) => m.id === q.sourceMessageId) ?? null) : null,
     }));
 
+  // Every version, including superseded ones: a record already written for an
+  // offer later revised still exists, and should still be visible.
+  const quoteSyncs: QuoteSyncView[] = allQuotes
+    .map((q) => ({
+      quoteId: q.id,
+      providerName: providerNameSafe(ctx, q.companyProviderId),
+      version: q.version,
+      blockedReason: quotationBlockedReason(q),
+      sync: quoteSyncFor(q.id),
+    }))
+    .sort((a, b) => a.providerName.localeCompare(b.providerName) || a.version - b.version);
+
   const comparison = latestComparison(ctx, rfq.id);
   const sync = comparison ? getSyncByComparison(comparison.id) : null;
 
@@ -383,6 +433,7 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
     emails,
     comparison,
     sync,
+    quoteSyncs,
     timeline,
   };
 }
@@ -400,6 +451,12 @@ export interface IntegrationStatus {
   };
   erp: ReturnType<typeof erpStatusForDisplay>;
   ai: ReturnType<typeof aiStatusForDisplay>;
+  /** The surface scheduled automation (n8n, cron) may reach. */
+  automation: {
+    enabled: boolean;
+    /** Paths a workflow may call, with what each one is allowed to do. */
+    endpoints: readonly AutomationEndpoint[];
+  };
   demoMode: boolean;
 }
 
@@ -414,6 +471,10 @@ export function integrationStatus(): IntegrationStatus {
     },
     erp: withLastCheck('erp', erpStatusForDisplay()),
     ai: aiStatusForDisplay(),
+    automation: {
+      enabled: Boolean(process.env.FREIGHT_AUTOMATION_TOKEN),
+      endpoints: AUTOMATION_ENDPOINTS,
+    },
     demoMode: getSetting<boolean>('demo.mode', false),
   };
 }

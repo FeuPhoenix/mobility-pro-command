@@ -1,0 +1,165 @@
+{
+  "name": "MPC Freight - Reply collection",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "frc-01",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/collect",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "frc-02",
+      "name": "Collect replies",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Reads the shared mailbox and files replies. Matching, extraction and revision handling all happen in the application. This endpoint uses MAILBOX_COLLECT_TOKEN, not the automation token.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "leftValue": "={{ $json.statusCode }}",
+              "rightValue": 400
+            }
+          ]
+        }
+      },
+      "id": "frc-03",
+      "name": "Did it fail?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ],
+      "notes": "Only a transport or configuration failure reaches here. A reply that cannot be matched is a normal outcome: it waits in the review queue for a person.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "frc-04",
+      "name": "Raise to operations",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        220
+      ],
+      "notes": "Wire to Slack or email. Do not add a blind retry: collection already advances its cursor only after a page is filed, and a lease stops overlapping runs.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "frc-05",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Collect replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect replies": {
+      "main": [
+        [
+          {
+            "node": "Did it fail?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Did it fail?": {
+      "main": [
+        [
+          {
+            "node": "Raise to operations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    },
+    {
+      "name": "Freight RFQ"
+    }
+  ],
+  "notes": "Collection is idempotent on the transport message id, so repeated or overlapping runs file nothing twice."
+}

@@ -495,7 +495,8 @@ export function prepareReminders(ctx: Ctx, rfqId: Id, linkIds: Id[]): EmailDraft
  *
  * The default is explicit closure by the manager: the deadline is shown and
  * counted down, but it does not close the RFQ on its own, because the customer
- * has not confirmed that rule. `autoCloseOnDeadline` in settings switches it.
+ * has not confirmed that rule. The `collection.autoCloseOnDeadline` setting
+ * (Settings -> Optional automation) switches on `closeRfqsAtDeadline` below.
  */
 export function closeRfq(ctx: Ctx, rfqId: Id): Rfq {
   if (ctx.user.role !== 'logistics_manager') {
@@ -533,7 +534,7 @@ export function closeRfq(ctx: Ctx, rfqId: Id): Rfq {
  * deadline passes. Neither sends anything or approves anything.
  */
 export const PRESELECT_LANE_KEY = 'recipients.preselectLane';
-export const CLOSE_AT_DEADLINE_KEY = 'collection.closeAtDeadline';
+export const CLOSE_AT_DEADLINE_KEY = 'collection.autoCloseOnDeadline';
 
 /**
  * With the setting on, a new RFQ starts with every contactable provider that

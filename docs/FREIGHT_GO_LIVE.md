@@ -1,6 +1,6 @@
 # Freight RFQ — what is left, and who does it
 
-All the code for W1–W5, and the deployment kit for W6, is on `dev`. What remains needs a person: a decision
+All the code for W1–W6 is on `main`. What remains needs a person: a decision
 from the customer, an administrator in Microsoft 365 or ERPNext, or a server.
 None of it is a code change unless a decision changes the scope.
 
@@ -16,7 +16,7 @@ Ask these first; several steps below wait on them. Each has a working default.
 
 | # | Question | Default today | Unblocks |
 | --- | --- | --- | --- |
-| 1 | Where do comparison outcomes go in ERPNext: the proposed *Freight Comparison* DocType, or something else? | Nothing is written | **C** |
+| 1 | ~~Where do comparison outcomes go in ERPNext?~~ **Answered 27 Sep: the raw quotations first**, analysis on their side. `Freight Quotation` is the destination; the comparison one stays available. | Raw quotations | **C** |
 | 2 | Are freight providers already Suppliers in ERPNext? | Providers are names | C (`--supplier-link`) |
 | 3 | Do they want RFQs started by email? | Off | **E** |
 | 4 | The real list of people, their roles and companies | Demo people | **D** |
@@ -109,33 +109,50 @@ everything; it is switched off in sign-in mode for that reason.
 deliberately incomplete email shows under *RFQ requests by email* on Replies
 with its problems listed.
 
-## F. Deployment (W6)
+## F. Deployment (W6) — the artefacts exist, the host does not
 
-**Who:** you choose the host; whoever runs servers follows
-`docs/FREIGHT_DEPLOYMENT.md`.
+**Who:** you, then whoever runs the server.
 
-The kit is built: `Dockerfile`, `deploy/docker-compose.yml` (with a daily
-backup), systemd units for a plain Linux server, `GET /api/health`, and
-`npm run backup`. What it needs from you:
+A container definition and its storage are in the repository now:
 
-1. **Choose a host** with Node 22.5+, a long-running process, a writable,
-   persistent, backed-up disk, and HTTPS on a fixed address. Not read-only
-   serverless (Vercel functions): the freight store needs a disk.
-2. **Build the Docker image once** before relying on it; Docker was not
-   available where this was written, so the Dockerfile has not been run.
-3. Set the configuration (`.env.local`) there, with `AUTH_MODE=entra` for real
-   data, and use the public address for `AUTH_BASE_URL` and the sign-in
-   redirect URI (D).
-4. Schedule the backup daily **and copy it off the server**; test one restore.
-5. Decide whether the operations demo at `/` should be reachable on the
-   production address (blocking it at the proxy is described in the guide).
+| File | What it is |
+| --- | --- |
+| `Dockerfile` | Node 24 build, runs unprivileged, storage on a volume at `/data` |
+| `docker-compose.yml` | One service, a named volume, a health check |
+| `/api/freight/health` | Unauthenticated liveness: opens the database and queries it |
+| `scripts/backup.mjs` | `VACUUM INTO` snapshot, safe while running, prunes to `--keep` |
 
-**Done when:** `/api/health` returns 200 on the public address, a sign-in works,
-and a backup has been restored once on a spare machine.
+1. Choose a host with a **writable, backed-up disk**: a small VM, Azure App
+   Service on Linux with a persistent volume, Railway, Fly.io, Render with a
+   disk. Not read-only serverless — the tracked `vercel.json` covers the
+   operations demo, and the freight module will not run there.
+2. `docker compose up -d --build`, with real values in `.env.local` on the
+   server and nowhere else.
+3. Put TLS in front of it. Either terminate with a proxy that sets
+   `x-forwarded-proto`, or set `FREIGHT_FORCE_SECURE_COOKIES=true`. Cookie
+   security follows the request, deliberately — see the note in section 7 of
+   `docs/HANDOFF.md`.
+4. Schedule `node scripts/backup.mjs` nightly, and back up the whole `/data`
+   volume as well: the script covers the database, not the attachments beside
+   it.
+5. Restore-test it once, before there is anything worth losing.
+
+The image, the volume, the health check and the in-container backup were all
+exercised locally on 27 September. TLS, a real host and a restore were not.
+
+**Done when:** `/api/freight/health` answers `{"ok":true}` through the proxy,
+sign-in works over HTTPS, the container survives `docker compose restart` with
+its data, and a backup has been restored into a throwaway copy and opened.
+
+The operations demo at `/` is a separate, stateless demonstration. Decide
+whether it should be reachable on the production address at all.
 
 ## G. Housekeeping on this machine
 
-- Dependencies: `npm audit` reports 0 vulnerabilities (Playwright 1.55.1,
-  Vitest 5, uuid 11 forced under exceljs). Re-run it before each release.
-- Open a pull request from `dev` to `main` when you want this reviewed.
+- **Dependencies, reviewed 28 September: `npm audit` reports 0.** From 6
+  findings (1 critical, 2 high, 3 moderate): Playwright 1.63, Vitest 5 (with
+  `@vitest/coverage-v8` 5), and `uuid` forced to 11.1.1 under exceljs through
+  `overrides` rather than downgrading exceljs. Re-run `npm audit` before each
+  release.
+- `dev` holds the work since `main` as a normal merge of `main`; merge it (or open a pull request) when you want it on `main`.
 - W7 (AI fallback) stays off until someone explicitly authorises the cost.

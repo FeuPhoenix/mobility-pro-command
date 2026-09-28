@@ -93,8 +93,26 @@ export function assertCanEdit(ctx: Ctx): void {
   if (ctx.user.role === 'system_mailbox_collector') {
     throw forbidden('The Mailbox Collector only files incoming replies. A person has to make this change.');
   }
-  if (isSystemRole(ctx.user.role)) {
+  // The deadline identity only ever closes collection, through its own path.
+  // (Scheduled automation may prepare work; approve and send refuse it.)
+  if (ctx.user.role === 'system_deadline') {
     throw forbidden('That is an automatic process, not a person. A person has to make this change.');
+  }
+}
+
+/**
+ * Sending is a person's act.
+ *
+ * `assertSendable` already refuses anything unapproved, and no system identity
+ * can approve, so automation cannot reach a send that way. This is the second
+ * lock: even a *already approved* email cannot be pushed out by a scheduler.
+ * Someone decided to approve it; someone decides to send it.
+ */
+export function assertCanSend(ctx: Ctx): void {
+  if (isSystemRole(ctx.user.role)) {
+    throw forbidden(
+      'Automation can prepare an email but never send one. A person has to approve it and send it.',
+    );
   }
 }
 
@@ -129,6 +147,10 @@ export function updateUser(u: User): void {
     .run(u.name, u.title, u.email, u.role, JSON.stringify(u.companyIds), u.disabled ? 1 : 0, u.externalId ?? null, u.id);
 }
 
+export function setUserDisabled(id: Id, disabled: boolean): void {
+  db().prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, id);
+}
+
 export function findUserByEmail(email: string): User | null {
   const row = db().prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email.trim()) as
     | Record<string, unknown>
@@ -145,6 +167,8 @@ function rowToUser(r: Record<string, unknown>): User {
     role: r.role as User['role'],
     companyIds: json<string[]>(r.company_ids, []),
     disabled: bool(r.disabled),
+    // Never leak the hash itself; the screens only need to know if sign-in works.
+    canSignIn: Boolean(str(r.password_hash)),
     externalId: str(r.external_id),
   };
 }

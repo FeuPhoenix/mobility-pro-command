@@ -1,60 +1,66 @@
 /**
- * Backs up the freight store (database + attachments), safely while the
- * application is running, and prunes old backups.
+ * Takes a consistent backup of the freight database while it is running.
  *
- *   node scripts/backup.mjs [target-folder] [keep-days]
+ *   node scripts/backup.mjs [--out=dir] [--keep=14]
  *
- * Defaults: target = $FREIGHT_BACKUP_DIR or ./backups, keep 14 days.
- * Reads the store from $FREIGHT_DATA_DIR (default ./data), exactly as the app.
- * Schedule it daily (cron, systemd timer or Windows Task Scheduler), and copy
- * the target folder somewhere off the server: a backup on the same disk does
- * not survive losing the disk.
+ * It uses SQLite's `VACUUM INTO`, which writes a complete, already-checkpointed
+ * copy in one statement. Copying the `.sqlite` file with `cp` is not equivalent:
+ * the database runs in WAL mode, so recent writes live in a sidecar file and a
+ * naive copy can restore to a state that never existed.
  *
- * To restore: stop the app, replace data/freight.db and data/attachments with
- * the ones from a backup folder, start the app.
+ * Attachments are files on disk beside the database and are NOT included here;
+ * back up the whole data directory for those. This exists so a nightly job can
+ * take the database safely without stopping the application.
  */
 
-import { DatabaseSync, backup } from 'node:sqlite';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 
-const dataDir = path.resolve(process.env.FREIGHT_DATA_DIR ?? 'data');
-const dbPath = process.env.FREIGHT_DB_FILE ?? path.join(dataDir, 'freight.db');
-const target = path.resolve(process.argv[2] ?? process.env.FREIGHT_BACKUP_DIR ?? 'backups');
-const keepDays = Number.parseInt(process.argv[3] ?? '14', 10);
+const arg = (name, fallback) => {
+  const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : fallback;
+};
 
-if (!existsSync(dbPath)) {
-  console.error(`No freight database at ${dbPath}. Set FREIGHT_DATA_DIR to the folder the app uses.`);
-  process.exit(2);
+const DATA_DIR = process.env.FREIGHT_DATA_DIR
+  ? path.resolve(process.env.FREIGHT_DATA_DIR)
+  : path.resolve(process.cwd(), 'data');
+// Must match src/freight/db.ts exactly, or this backs up nothing and says it
+// worked.
+const DB_FILE = process.env.FREIGHT_DB_FILE ?? path.join(DATA_DIR, 'freight.db');
+
+const OUT = path.resolve(arg('out', path.join(DATA_DIR, 'backups')));
+const KEEP = Number(arg('keep', '14'));
+
+mkdirSync(OUT, { recursive: true });
+
+const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+const target = path.join(OUT, `freight-${stamp}.db`);
+
+if (!existsSync(DB_FILE)) {
+  console.error(`No database at ${DB_FILE}. Nothing was backed up.`);
+  process.exit(1);
 }
 
-const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-const folder = path.join(target, `freight-${stamp}`);
-mkdirSync(folder, { recursive: true });
-
-const source = new DatabaseSync(dbPath, { readOnly: true });
-await backup(source, path.join(folder, 'freight.db'));
-source.close();
-
-const attachments = path.join(dataDir, 'attachments');
-let files = 0;
-if (existsSync(attachments)) {
-  cpSync(attachments, path.join(folder, 'attachments'), { recursive: true });
-  files = readdirSync(attachments).length;
+const db = new DatabaseSync(DB_FILE, { readOnly: true });
+try {
+  // One statement, and it refuses rather than half-writing if the target exists.
+  db.exec(`VACUUM INTO '${target.replace(/'/g, "''")}'`);
+} finally {
+  db.close();
 }
 
-let removed = 0;
-const cutoff = Date.now() - keepDays * 86_400_000;
-for (const name of readdirSync(target)) {
-  if (!/^freight-\d{8}-\d{4}$/.test(name)) continue;
-  const full = path.join(target, name);
-  if (full !== folder && statSync(full).mtimeMs < cutoff) {
-    rmSync(full, { recursive: true, force: true });
-    removed += 1;
+console.log(`Wrote ${target} (${(statSync(target).size / 1024).toFixed(0)} KB)`);
+
+// Keep the most recent, discard the rest. A backup nobody prunes fills the disk
+// that the application needs to keep working.
+if (Number.isFinite(KEEP) && KEEP > 0) {
+  const backups = readdirSync(OUT)
+    .filter((f) => /^freight-.*\.db$/.test(f))
+    .sort()
+    .reverse();
+  for (const old of backups.slice(KEEP)) {
+    unlinkSync(path.join(OUT, old));
+    console.log(`  pruned ${old}`);
   }
 }
-
-console.log(
-  `Backed up to ${folder}: database ${statSync(path.join(folder, 'freight.db')).size} bytes, ${files} attachment${files === 1 ? '' : 's'}.` +
-    (removed > 0 ? ` Removed ${removed} backup${removed === 1 ? '' : 's'} older than ${keepDays} days.` : ''),
-);

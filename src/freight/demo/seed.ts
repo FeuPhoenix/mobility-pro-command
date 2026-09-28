@@ -21,6 +21,8 @@ import {
   insertUser,
   listEmails,
   listQuotes,
+  listRecipients,
+  updateRecipient,
   newId,
   now,
   updateRfq,
@@ -33,8 +35,10 @@ import { ingestMessage, reviewQuote } from '../service/inbox';
 import { createComparison, prepareComparisonEmail } from '../service/compare';
 import { queueSync, runSync } from '../service/erp';
 import { listCompanyProviders, listRfqs } from '../repo';
+import { setPassword } from '../auth/password';
 import {
   COMPANIES,
+  DEMO_PASSWORD,
   EXCEL_QUOTE_ROWS,
   PROVIDERS,
   REPLY_ANCHOR_AMBIGUOUS,
@@ -120,6 +124,9 @@ export async function seedDemo(): Promise<SeedResult> {
     companyIds: u.companies.map((code) => companyIds[code]),
   }));
   for (const u of users) insertUser(u);
+  // Every demonstration account gets a real, hashed password. Sign-in is not
+  // bypassed for the demo; the sign-in page just shows what to type.
+  for (const u of users) await setPassword(u.id, DEMO_PASSWORD);
 
   const manager: Ctx = { user: users[0] };
   const industrial: Ctx = { user: users[2] };
@@ -210,7 +217,16 @@ export async function seedDemo(): Promise<SeedResult> {
   });
   setRecipients(manager, rfq2.id, [link('Anchor Line Agencies'), link('Nile Star Logistics')]);
   await approveAndSend(manager, rfq2.id);
-  summary.push(`${rfq2.reference}: sent, still waiting for responses.`);
+
+  // Backdate this one so the chase policy has something real to act on. Without
+  // it every request in the demo was sent "just now", nothing is ever due, and
+  // the whole chasing path stays invisible.
+  for (const r of listRecipients(rfq2.id)) {
+    updateRecipient({ ...r, sentAt: instant(-5, 9) });
+  }
+  summary.push(
+    `${rfq2.reference}: sent five days ago, no replies - two providers are due a chase.`,
+  );
 
   /* ---------------------------- The replies -------------------------------- */
 

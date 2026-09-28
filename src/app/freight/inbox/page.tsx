@@ -39,6 +39,7 @@ export default function InboxPage() {
           </div>
         </div>
         <div className="fr-head-actions">
+          <ImportEmlButton />
           <label className="row" style={{ gap: 7, fontSize: 13 }}>
             <input type="checkbox" checked={showMatched} onChange={(e) => setShowMatched(e.target.checked)} />
             Show replies already matched
@@ -299,5 +300,66 @@ function ProviderPicker({
         </option>
       ))}
     </select>
+  );
+}
+
+/**
+ * Loads `.eml` files as though they had arrived in the mailbox.
+ *
+ * This is how a real provider quotation gets in front of the extractor before
+ * any mailbox is connected: export the reply from Outlook, drop it here, and it
+ * goes through the same matching and extraction as a live one.
+ */
+function ImportEmlButton() {
+  const { refresh, notify } = useFreight();
+  const input = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  async function upload(files: FileList) {
+    setBusy(true);
+    try {
+      const form = new FormData();
+      for (const f of Array.from(files)) form.append('file', f);
+      const res = await fetch('/api/freight/inbox/import', { method: 'POST', body: form });
+      const payload = (await res.json()) as {
+        ok?: boolean;
+        message?: string;
+        error?: string;
+        data?: { results: { filename: string; ok: boolean; error?: string; warnings?: string[] }[] };
+      };
+      if (!res.ok && !payload.data) {
+        notify('bad', payload.error ?? 'Those files could not be loaded.');
+        return;
+      }
+      notify(payload.ok ? 'ok' : 'info', payload.message ?? 'Done.');
+      for (const r of payload.data?.results ?? []) {
+        if (!r.ok) notify('bad', `${r.filename}: ${r.error}`);
+        else for (const w of r.warnings ?? []) notify('info', `${r.filename}: ${w}`);
+      }
+      await refresh();
+    } catch {
+      notify('bad', 'Those files could not be loaded.');
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept=".eml"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files?.length) void upload(e.target.files);
+        }}
+      />
+      <button className="btn" disabled={busy} onClick={() => input.current?.click()}>
+        {busy ? 'Loading…' : 'Load .eml files'}
+      </button>
+    </>
   );
 }

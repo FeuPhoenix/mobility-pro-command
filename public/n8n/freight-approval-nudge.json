@@ -1,0 +1,163 @@
+{
+  "name": "MPC Freight - Approval nudge",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8-18/3 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "fan-01",
+      "name": "Every three hours in office hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/approvals",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fan-02",
+      "name": "What is waiting for approval?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Read-only. Includes approvals that lapsed because the email was edited after being approved, which are the easiest ones to miss.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.body.data.count }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      },
+      "id": "fan-03",
+      "name": "Anything waiting?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fan-04",
+      "name": "Nudge the manager",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        220
+      ],
+      "notes": "Links to the workspace: approving has to happen there, where the recipients and the body are visible.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fan-05",
+      "name": "Queue is clear",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every three hours in office hours": {
+      "main": [
+        [
+          {
+            "node": "What is waiting for approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What is waiting for approval?": {
+      "main": [
+        [
+          {
+            "node": "Anything waiting?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything waiting?": {
+      "main": [
+        [
+          {
+            "node": "Nudge the manager",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Queue is clear",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    },
+    {
+      "name": "Freight RFQ"
+    }
+  ],
+  "notes": "Notification only. Nothing here can approve or send an email."
+}

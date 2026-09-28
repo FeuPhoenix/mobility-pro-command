@@ -50,6 +50,16 @@ export const COMPANIES = [
   },
 ] as const;
 
+/**
+ * Demonstration passwords.
+ *
+ * Real accounts, real hashing, real sessions - the only thing special about
+ * these is that the sign-in page lists them while the workspace holds demo
+ * data, so anyone can try the different roles. They are useless outside a
+ * demonstration dataset, and reseeding replaces them.
+ */
+export const DEMO_PASSWORD = 'FreightDemo2026';
+
 export const USERS = [
   {
     key: 'manager',

@@ -1,13 +1,13 @@
+# Keep the build context small, and keep local state and secrets out of the image.
 node_modules
 .next
 .git
-data
-backups
-.freight-data-e2e
-.demo-data
-.demo-data-e2e
-test-results
-playwright-report
 .env*
 !.env.example
-*.tsbuildinfo
+data
+.demo-data*
+.freight-data*
+test-results
+playwright-report
+docs
+*.log

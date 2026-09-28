@@ -1,0 +1,165 @@
+{
+  "name": "MPC Freight - Daily briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "fdb-01",
+      "name": "Every weekday at 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/summary",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fdb-02",
+      "name": "Freight summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "One call. The counts come from the same read model the Overview screen uses, so the briefing and the screen can never disagree.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.body.data.awaitingApproval + $json.body.data.staleApprovals + $json.body.data.providersDueAChase + $json.body.data.quotesToCheck + $json.body.data.repliesToMatch + $json.body.data.comparisonsReady + $json.body.data.erpNeedsAttention + $json.body.data.deadlinesWithin24h.length }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      },
+      "id": "fdb-03",
+      "name": "Anything worth reporting?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ],
+      "notes": "A briefing that says \"nothing to do\" every morning stops being read. Post only when there is something.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fdb-04",
+      "name": "Post the briefing",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        220
+      ],
+      "notes": "Leads with what needs a decision. Posts only when there is something to report.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fdb-05",
+      "name": "Quiet day, stay silent",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every weekday at 08:00": {
+      "main": [
+        [
+          {
+            "node": "Freight summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Freight summary": {
+      "main": [
+        [
+          {
+            "node": "Anything worth reporting?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything worth reporting?": {
+      "main": [
+        [
+          {
+            "node": "Post the briefing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Quiet day, stay silent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    },
+    {
+      "name": "Freight RFQ"
+    }
+  ],
+  "notes": "Read-only."
+}

@@ -41,7 +41,32 @@ CREATE TABLE IF NOT EXISTS users (
   title TEXT NOT NULL,
   email TEXT NOT NULL,
   role TEXT NOT NULL,
-  company_ids TEXT NOT NULL
+  company_ids TEXT NOT NULL,
+  -- scrypt$N$r$p$salt$hash. Null means the account cannot sign in yet.
+  password_hash TEXT,
+  password_set_at TEXT,
+  disabled INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(trim(email)));
+
+-- Only the SHA-256 of the session token is stored, so a database backup does
+-- not hand over live sessions.
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0,
+  window_start TEXT NOT NULL,
+  locked_until TEXT
 );
 
 CREATE TABLE IF NOT EXISTS companies (
@@ -221,6 +246,28 @@ CREATE TABLE IF NOT EXISTS erp_syncs (
   created_at TEXT NOT NULL
 );
 
+-- One row per quotation version written to ERPNext. Separate from erp_syncs
+-- because that table is keyed to a comparison, and a quotation is a different
+-- thing with its own lifecycle: it can be written long before any comparison.
+CREATE TABLE IF NOT EXISTS erp_quote_syncs (
+  id TEXT PRIMARY KEY,
+  company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  quote_id TEXT NOT NULL UNIQUE REFERENCES quotes(id) ON DELETE CASCADE,
+  adapter TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  doctype TEXT,
+  remote_name TEXT,
+  remote_url TEXT,
+  last_error TEXT,
+  setup_requirements TEXT NOT NULL,
+  last_attempt_at TEXT,
+  completed_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS erp_quote_syncs_company ON erp_quote_syncs (company_id);
+
 CREATE TABLE IF NOT EXISTS audit_events (
   id TEXT PRIMARY KEY,
   company_id TEXT,
@@ -299,6 +346,9 @@ function migrate(handle: DatabaseSync): void {
   );
   if (!userColumns.has('disabled')) handle.exec('ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
   if (!userColumns.has('external_id')) handle.exec('ALTER TABLE users ADD COLUMN external_id TEXT');
+  // Password mode: null means the account exists but cannot sign in with one.
+  if (!userColumns.has('password_hash')) handle.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+  if (!userColumns.has('password_set_at')) handle.exec('ALTER TABLE users ADD COLUMN password_set_at TEXT');
   // Sign-in finds a person by email, so an address may belong to one person only.
   try {
     handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_email_key ON users (lower(email))');
@@ -372,6 +422,9 @@ export function setSetting(key: string, value: unknown): void {
 export function truncateAll(): void {
   const handle = db();
   const tables = [
+    'sessions',
+    'erp_quote_syncs',
+    'login_attempts',
     'audit_events',
     'erp_syncs',
     'comparisons',

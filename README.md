@@ -28,7 +28,7 @@ npm start          # http://localhost:4310
 Tests:
 
 ```bash
-npm test           # 220 business-logic tests (Vitest)
+npm test           # 339 unit tests (Vitest), 6 skipped without a live ERPNext
 npm run test:e2e   # browser journey tests (Playwright, uses your installed Chrome)
 
 # Freight module only:
@@ -71,6 +71,7 @@ Unlike the operations demo below, this module keeps a **real server-side store**
 approval that does not survive a reload is not an approval, and duplicate-send
 protection a client can forget is not protection.
 
+- **Taking this over? Start here:** [`docs/HANDOFF.md`](docs/HANDOFF.md)
 - Setup and configuration: [`docs/FREIGHT_SETUP.md`](docs/FREIGHT_SETUP.md)
 - What works, what is simulated, and the demo walkthrough: [`docs/FREIGHT_HANDOVER.md`](docs/FREIGHT_HANDOVER.md)
 - ERPNext mapping and open questions: [`docs/FREIGHT_ERPNEXT.md`](docs/FREIGHT_ERPNEXT.md)

@@ -9,14 +9,14 @@
 > | --- | --- |
 > | `npx tsc --noEmit` | Clean |
 > | `npm run build` | Compiles |
-> | `npm test` | **220 passing**: 82 operations demo, 138 freight |
-> | `npm run test:e2e` | **22 passing**: 12 operations demo, 10 freight |
-> | `node scripts/journey.mjs` | **61 passing** (freight, over HTTP) |
+> | `npm test` | **339 passing**, 6 skipped without a live ERPNext: 82 operations demo, 257 freight |
+> | `npm run test:e2e` | **24 passing**, 4 skipped: 12 operations demo, 12 freight |
+> | `node scripts/journey.mjs` | **65 passing** (freight, over HTTP, demo mode) |
 > | `npm audit` | 0 vulnerabilities |
 >
 > What the freight tests cover, and what has not been verified against live
 > services, is in `docs/FREIGHT_HANDOVER.md` (section 3) and
-> `docs/FREIGHT_RFQ_PROGRESS.md`.
+> `docs/HANDOFF.md` and `docs/FREIGHT_RFQ_PROGRESS.md`.
 
 What was actually tested, by what means, and what was not tested. Everything below was
 run on this build; nothing is asserted from inspection alone.

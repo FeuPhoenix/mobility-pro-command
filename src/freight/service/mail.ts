@@ -17,6 +17,7 @@ import type { EmailDraft, Id, Recipient } from '../types';
 import {
   assertCanApprove,
   assertCanEdit,
+  assertCanSend,
   audit,
   findRecipient,
   getEmail,
@@ -143,6 +144,7 @@ export interface SendOutcome {
  */
 export async function sendEmail(ctx: Ctx, emailId: Id): Promise<SendOutcome> {
   assertCanEdit(ctx);
+  assertCanSend(ctx);
   // Read from storage: the approval gate must not trust anything from the caller.
   const email = getEmail(ctx, emailId);
   assertSendable(email);

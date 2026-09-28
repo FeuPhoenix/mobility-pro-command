@@ -1,0 +1,268 @@
+{
+  "doctype": "DocType",
+  "name": "Freight Quotation",
+  "module": "Freight",
+  "custom": 1,
+  "naming_rule": "By fieldname",
+  "autoname": "field:record_slug",
+  "title_field": "provider_name",
+  "track_changes": 1,
+  "fields": [
+    {
+      "fieldname": "record_slug",
+      "label": "Record name",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "description": "Readable name ending in part of the integration key, so two quotations cannot collide."
+    },
+    {
+      "fieldname": "freight_idempotency_key",
+      "label": "Integration key",
+      "fieldtype": "Data",
+      "unique": 1,
+      "read_only": 1,
+      "reqd": 1,
+      "description": "Set by the freight application. A retry searches on this, so add a unique index and never edit it by hand."
+    },
+    {
+      "fieldname": "company",
+      "label": "Company",
+      "fieldtype": "Link",
+      "options": "Company",
+      "reqd": 1
+    },
+    {
+      "fieldname": "supplier",
+      "label": "Supplier",
+      "fieldtype": "Link",
+      "options": "Supplier"
+    },
+    {
+      "fieldname": "provider_name",
+      "label": "Provider",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "section_request",
+      "label": "Request",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "rfq_reference",
+      "label": "RFQ reference",
+      "fieldtype": "Data",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "route",
+      "label": "Route",
+      "fieldtype": "Data",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "origin_port",
+      "label": "Origin port",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "destination_port",
+      "label": "Destination port",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "incoterm",
+      "label": "Incoterm",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "section_version",
+      "label": "Version",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "quotation_version",
+      "label": "Version",
+      "fieldtype": "Int",
+      "reqd": 1,
+      "description": "Providers revise. Each version is its own record; do not aggregate across them blindly."
+    },
+    {
+      "fieldname": "supersedes_quotation",
+      "label": "Supersedes",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "quotation_status",
+      "label": "Status",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "received_at",
+      "label": "Received",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "reviewed_at",
+      "label": "Checked by a person",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "section_offer",
+      "label": "Offer",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "shipping_line",
+      "label": "Shipping line",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "currency",
+      "label": "Currency",
+      "fieldtype": "Data",
+      "length": 3
+    },
+    {
+      "fieldname": "container_basis",
+      "label": "Rate basis",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "base_freight",
+      "label": "Base freight",
+      "fieldtype": "Float",
+      "precision": "2",
+      "description": "Per container, on the basis in Rate basis. Empty means not stated."
+    },
+    {
+      "fieldname": "total_quoted_by_provider",
+      "label": "Total quoted by provider",
+      "fieldtype": "Float",
+      "precision": "2"
+    },
+    {
+      "fieldname": "column_offer",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "transit_days",
+      "label": "Transit days",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "free_days_destination",
+      "label": "Free days at destination",
+      "fieldtype": "Int"
+    },
+    {
+      "fieldname": "valid_until",
+      "label": "Valid until",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "sailing_date",
+      "label": "Sailing date",
+      "fieldtype": "Date"
+    },
+    {
+      "fieldname": "payment_terms",
+      "label": "Payment terms",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "section_charges",
+      "label": "Charges",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "charges",
+      "label": "Charges",
+      "fieldtype": "Table",
+      "options": "Freight Quotation Charge"
+    },
+    {
+      "fieldname": "section_terms",
+      "label": "Terms",
+      "fieldtype": "Section Break"
+    },
+    {
+      "fieldname": "inclusions",
+      "label": "Included",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "exclusions",
+      "label": "Excluded",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "conditions",
+      "label": "Conditions",
+      "fieldtype": "Small Text"
+    },
+    {
+      "fieldname": "section_provenance",
+      "label": "Provenance",
+      "fieldtype": "Section Break",
+      "collapsible": 1
+    },
+    {
+      "fieldname": "source_kind",
+      "label": "Read from",
+      "fieldtype": "Data",
+      "read_only": 1,
+      "description": "email_body, excel, pdf_text or manual."
+    },
+    {
+      "fieldname": "source_attachment",
+      "label": "Source file",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "extractor",
+      "label": "Extractor",
+      "fieldtype": "Data",
+      "read_only": 1
+    },
+    {
+      "fieldname": "unstated_numbers",
+      "label": "Numbers the provider did not state",
+      "fieldtype": "Small Text",
+      "read_only": 1,
+      "description": "Comma separated field names that are 0 only because the provider never stated them. Treat each as unknown, not as zero."
+    },
+    {
+      "fieldname": "field_confidence",
+      "label": "Field confidence",
+      "fieldtype": "Code",
+      "options": "JSON",
+      "read_only": 1,
+      "description": "Per field: high, medium, low, missing, or corrected_by_reviewer. Treat anything below high as needing a human before it drives a decision."
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1,
+      "report": 1,
+      "export": 1
+    },
+    {
+      "role": "Freight RFQ Integration",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "report": 1
+    }
+  ]
+}

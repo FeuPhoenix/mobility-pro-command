@@ -1,0 +1,32 @@
+# A single-container deployment with its storage on a named volume.
+#
+#   docker compose up -d --build
+#
+# Behind TLS, either terminate with a proxy that sets x-forwarded-proto, or set
+# FREIGHT_FORCE_SECURE_COOKIES=true. Do not key cookie security off NODE_ENV:
+# a browser refuses a Secure cookie over plain HTTP and sign-in fails silently.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '4310:4310'
+    # Real values live in .env.local on the server, never in this file.
+    env_file:
+      - .env.local
+    volumes:
+      - mpc-data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4310/api/freight/health').then(r=>r.json()).then(b=>process.exit(b.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  mpc-data:

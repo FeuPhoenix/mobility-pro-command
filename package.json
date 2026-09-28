@@ -2,9 +2,6 @@
   "name": "mobility-pro-command",
   "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": ">=22.5"
-  },
   "description": "Mobility Pro Command - intelligent operational layer demo alongside ERPNext",
   "scripts": {
     "dev": "next dev -p 4310",
@@ -14,7 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "backup": "node --no-warnings scripts/backup.mjs"
+    "workflows:build": "node scripts/build-freight-workflows.mjs",
+    "n8n:provision": "node scripts/provision-n8n.mjs",
+    "n8n:livetest": "node scripts/n8n-live-test.mjs",
+    "n8n:run": "node scripts/n8n-run-workflow.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -25,12 +25,13 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@playwright/test": "1.55.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "24.5.2",
     "@types/react": "19.1.13",
     "@types/react-dom": "19.1.9",
+    "@vitest/coverage-v8": "^5.0.2",
     "typescript": "5.9.2",
-    "vitest": "5.0.2"
+    "vitest": "^5.0.2"
   },
   "allowScripts": {
     "esbuild@0.28.2": true

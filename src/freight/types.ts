@@ -37,15 +37,21 @@ export type UserRole =
    */
   | 'system_mailbox_collector'
   /**
+   * Not a person. Scheduled automation (n8n, cron) preparing work for a human:
+   * it may draft a reminder and retry a failed ERPNext record, and nothing else.
+   * It can never approve an email and can never send one.
+   */
+  | 'system_automation'
+  /**
    * Not a person. Closes collection when a response deadline passes, when the
-   * "close at the deadline" setting is on. Never a user row; cannot edit,
-   * approve or send.
+   * `collection.autoCloseOnDeadline` setting is on. Never a user row; cannot
+   * edit, approve or send.
    */
   | 'system_deadline';
 
 /** System identities act on their own schedule and are never a signed-in person. */
 export function isSystemRole(role: UserRole): boolean {
-  return role === 'system_mailbox_collector' || role === 'system_deadline';
+  return role === 'system_mailbox_collector' || role === 'system_automation' || role === 'system_deadline';
 }
 
 export interface User {
@@ -58,6 +64,8 @@ export interface User {
   companyIds: Id[];
   /** A disabled person cannot sign in, and an existing session stops working. */
   disabled?: boolean;
+  /** False when the account exists but no password has been set. Password mode. */
+  canSignIn?: boolean;
   /**
    * The identity provider's immutable id (Entra `oid`), bound at first sign-in.
    * After that, a sign-in must carry the same id, so renaming someone else's

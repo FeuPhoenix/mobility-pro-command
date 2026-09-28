@@ -36,6 +36,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   logistics_manager: 'Logistics Operations Manager',
   logistics_coordinator: 'Logistics Coordinator',
   viewer: 'Viewer (read-only)',
+  system_automation: 'Scheduled automation',
   system_mailbox_collector: 'System',
   system_deadline: 'System',
 };

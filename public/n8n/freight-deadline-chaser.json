@@ -1,0 +1,200 @@
+{
+  "name": "MPC Freight - Deadline chaser",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "fdc-01",
+      "name": "Every weekday at 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/reminders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fdc-02",
+      "name": "Who is due a chase?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "The application decides who is due, using the reminder policy in Settings. This workflow supplies the clock, never the judgement. Each provider comes back with the reason.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.body.data.providersDue }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      },
+      "id": "fdc-03",
+      "name": "Anyone due?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/reminders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fdc-04",
+      "name": "Prepare the reminders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        220
+      ],
+      "notes": "Creates DRAFT reminders only. It cannot send: the automation identity is refused by both assertCanApprove and assertCanSend. Every draft waits in the manager approval queue.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fdc-05",
+      "name": "Tell the manager they are waiting",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1140,
+        220
+      ],
+      "notes": "Says reminders are waiting for approval - never that they were sent, because nothing was.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fdc-06",
+      "name": "Nothing due",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every weekday at 09:00": {
+      "main": [
+        [
+          {
+            "node": "Who is due a chase?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Who is due a chase?": {
+      "main": [
+        [
+          {
+            "node": "Anyone due?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anyone due?": {
+      "main": [
+        [
+          {
+            "node": "Prepare the reminders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare the reminders": {
+      "main": [
+        [
+          {
+            "node": "Tell the manager they are waiting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    },
+    {
+      "name": "Freight RFQ"
+    }
+  ],
+  "notes": "This workflow never sends. Preparing the same reminder twice is refused by the application and reported as a skip, not an error."
+}

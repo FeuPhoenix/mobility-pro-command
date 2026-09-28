@@ -1,0 +1,258 @@
+{
+  "name": "MPC Freight - ERPNext retry",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "fer-01",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/erpnext",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fer-02",
+      "name": "What has not been recorded?",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "notes": "Separates records that can be retried from those blocked on missing setup.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.body.data.retryable }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      },
+      "id": "fer-03",
+      "name": "Anything retryable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        700,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $vars.MPC_BASE_URL }}/api/freight/automation/erpnext",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "id": "fer-04",
+      "name": "Retry them",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        220
+      ],
+      "notes": "Each record carries a stable idempotency key, so a retry updates rather than duplicates. Records blocked on setup are skipped deliberately - retrying those on a timer would fail forever and bury the real message.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              },
+              "leftValue": "={{ $json.body.ok ? 0 : 1 }}",
+              "rightValue": 0
+            }
+          ]
+        }
+      },
+      "id": "fer-05",
+      "name": "Still failing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1140,
+        220
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fer-06",
+      "name": "Raise to operations",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        140
+      ],
+      "notes": "A record that keeps failing needs a person. Do not tighten the schedule.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "fer-07",
+      "name": "Recovered",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "fer-08",
+      "name": "Nothing to retry",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        920,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "What has not been recorded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What has not been recorded?": {
+      "main": [
+        [
+          {
+            "node": "Anything retryable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything retryable?": {
+      "main": [
+        [
+          {
+            "node": "Retry them",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing to retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry them": {
+      "main": [
+        [
+          {
+            "node": "Still failing?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still failing?": {
+      "main": [
+        [
+          {
+            "node": "Raise to operations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recovered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "Mobility Pro Command"
+    },
+    {
+      "name": "Freight RFQ"
+    }
+  ],
+  "notes": "While the ERPNext adapter is simulated, nothing is written to ERPNext and the response says so. Never treat a simulated success as a live write."
+}

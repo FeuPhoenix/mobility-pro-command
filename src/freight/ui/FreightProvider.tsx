@@ -39,9 +39,19 @@ export interface ProviderRow {
 
 export interface FreightState {
   seeded: boolean;
-  /** demo: the "Acting as" picker. entra: Sign in with Microsoft. */
-  auth?: { mode: 'demo' | 'entra'; signedIn: boolean; problems: string[] };
+  /**
+   * demo: the "Acting as" picker. password: email and password held here.
+   * entra: Sign in with Microsoft.
+   */
+  auth?: {
+    mode: 'demo' | 'password' | 'entra';
+    signedIn: boolean;
+    /** Password mode only: nobody can sign in yet, so offer first-run setup. */
+    needsSetup?: boolean;
+    problems: string[];
+  };
   user: User | null;
+  /** Demo mode: everyone, for the picker. Signed-in mode: the People list. */
   users: User[];
   companies: Company[];
   companyId: string | null;
@@ -76,6 +86,8 @@ interface FreightContextValue {
   refresh: () => Promise<void>;
   /** Runs a mutation. Returns the result, or null when it failed. */
   run: <T = unknown>(action: Record<string, unknown>) => Promise<{ message: string; data: T } | null>;
+  signOut: () => Promise<void>;
+  /** Demo mode only. The server refuses it in the two real modes. */
   switchUser: (userId: string) => Promise<void>;
   loadDemo: () => Promise<void>;
   toasts: Toast[];
@@ -124,6 +136,13 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
       try {
         const url = company ? `/api/freight/state?companyId=${encodeURIComponent(company)}` : '/api/freight/state';
         const res = await fetch(url, { cache: 'no-store' });
+        if (res.status === 401) {
+          // Not signed in, or the session expired underneath us.
+          if (typeof window !== 'undefined' && window.location.pathname !== '/freight/login') {
+            window.location.href = '/freight/login';
+          }
+          return;
+        }
         if (!res.ok) throw new Error(`The workspace could not be loaded (${res.status}).`);
         const data = (await res.json()) as FreightState;
         if (seq !== requestSeq.current) return;
@@ -178,12 +197,22 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(action),
         });
-        const payload = (await res.json()) as { ok?: boolean; message?: string; error?: string; data?: T };
+        if (res.status === 401) {
+          window.location.href = '/freight/login';
+          return null;
+        }
+        const payload = (await res.json()) as {
+          ok?: boolean;
+          message?: string;
+          tone?: Toast['tone'];
+          error?: string;
+          data?: T;
+        };
         if (!res.ok || !payload.ok) {
           notify('bad', payload.error ?? 'That did not work.');
           return null;
         }
-        if (payload.message) notify('ok', payload.message);
+        if (payload.message) notify(payload.tone ?? 'ok', payload.message);
         await load(companyId);
         return { message: payload.message ?? '', data: payload.data as T };
       } catch (err) {
@@ -212,19 +241,29 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
         }
         notify('info', payload.message ?? 'Switched.');
         // The new person may not have access to the selected company.
-        await load(null);
         setCompanyIdRaw(null);
         try {
           window.localStorage.removeItem(COMPANY_KEY);
         } catch {
-          /* ignore */
+          /* a blocked localStorage is not a reason to fail the switch */
         }
+        await load(null);
       } finally {
         setBusy(false);
       }
     },
     [load, notify],
   );
+
+  const signOut = useCallback(async () => {
+    setBusy(true);
+    try {
+      await fetch('/api/freight/auth/logout', { method: 'POST' });
+    } finally {
+      // A full navigation, so nothing from the previous session survives.
+      window.location.href = '/freight/login';
+    }
+  }, []);
 
   const loadDemo = useCallback(async () => {
     setBusy(true);
@@ -253,13 +292,14 @@ export function FreightProvider({ children }: { children: React.ReactNode }) {
       setCompanyId,
       refresh,
       run,
+      signOut,
       switchUser,
       loadDemo,
       toasts,
       dismissToast,
       notify,
     }),
-    [state, loading, busy, error, companyId, setCompanyId, refresh, run, switchUser, loadDemo, toasts, dismissToast, notify],
+    [state, loading, busy, error, companyId, setCompanyId, refresh, run, signOut, switchUser, loadDemo, toasts, dismissToast, notify],
   );
 
   return <FreightContext.Provider value={value}>{children}</FreightContext.Provider>;

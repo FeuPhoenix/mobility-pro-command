@@ -25,9 +25,9 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 220 business-logic tests (Vitest)
-npm run test:e2e     # 22 browser journeys (Playwright, uses your installed Chrome)
-node scripts/journey.mjs   # 61 end-to-end checks over HTTP against a running server
+npm test             # 339 unit tests (Vitest), 6 skipped without a live ERPNext
+npm run test:e2e     # 24 browser tests + 4 skipped (Playwright, uses your installed Chrome)
+node scripts/journey.mjs   # 65 end-to-end checks over HTTP against a running server
 ```
 
 `npm run test:e2e` needs a production build first and starts its own server on
@@ -44,8 +44,9 @@ the demonstration dataset**, so do not point it at anything you care about.
 Both are git-ignored. Override the location with `FREIGHT_DATA_DIR`. Delete the
 directory to start clean, or use **Load demo data** in the application.
 
-> **Deployment:** see `docs/FREIGHT_DEPLOYMENT.md` (Docker, systemd, health
-> check, backups). The freight module needs a writable filesystem. It runs
+> **Deployment:** `Dockerfile`, `docker-compose.yml`, `/api/freight/health` and
+> `scripts/backup.mjs`; the checklist is section F of `docs/FREIGHT_GO_LIVE.md`.
+> The freight module needs a writable filesystem. It runs
 > locally and on any normal Node host. It will **not** work on a read-only
 > serverless filesystem — the operations demo elsewhere in this repository is
 > deliberately stateless for that reason, but this module cannot be, because an
@@ -149,6 +150,29 @@ collected, and anything unrecognised goes to the review queue.
 
 A reply can still be brought in by hand from the request screen, and the whole
 downstream workflow behaves identically.
+
+### Optional automation (off by default)
+
+**Settings → Optional automation**, managers only. Both answer questions the
+customer has not settled, so both start off.
+
+- **Pre-select providers that serve the lane.** A new request (from the form,
+  the spreadsheet import or email intake) starts with every contactable provider
+  whose lanes include its route already ticked. Restricted providers are never
+  included, no email is prepared, and the manager reviews the list.
+- **Close collection when the response deadline passes**
+  (`collection.autoCloseOnDeadline`). Checked after each collection run, so it
+  needs reply collection scheduled (or someone pressing *Collect now*). It acts
+  as the system identity *Response deadline (automatic)*, which can do nothing
+  else. Late replies are still filed and a manager can reopen the request.
+
+### Importing a shipping requirement from Excel
+
+*Requests → New*: **Prefer a spreadsheet?** downloads the template; **Import a
+filled-in template** reads it back into the form. The import never creates
+anything by itself: the person checks the form and creates the RFQ, so a
+spreadsheet is validated exactly like typed input. A file with several
+requirements offers them one at a time.
 
 ### Starting an RFQ by email (off by default)
 
@@ -291,7 +315,72 @@ and changes to people.
 for Microsoft, and on a running server up to the redirect to Microsoft. The
 first real sign-in needs the app registration.
 
----
+### `password` mode, in detail
+
+For a deployment that cannot use Entra, or is not willing to wait for the
+tenant work. Set `AUTH_MODE=password`.
+
+- **Passwords** are hashed with scrypt from Node's own crypto (N=32768, r=8,
+  p=1) with a per-password salt. Minimum ten characters, with a letter and a
+  digit.
+- **Sessions are rows**, not stateless tokens, so they can be revoked. Only the
+  SHA-256 of the token is stored, so a database backup does not hand over live
+  sessions. Seven days, or twelve hours idle, whichever comes first.
+- **A password change ends every session** for that person, and **disabling an
+  account takes effect on the next request**, not at expiry.
+- **Failed attempts are throttled**: eight within fifteen minutes locks the
+  account for fifteen minutes.
+- **Sign-in never reveals whether an address exists.** A wrong password and an
+  unknown address give the same message in the same time, because the unknown
+  case still performs a full scrypt comparison.
+- **First run**: a workspace where nobody can sign in offers to create the first
+  account, then that route refuses, so it cannot become a second back door.
+- The session cookie is `Secure` when the request arrived over HTTPS, or over a
+  proxy that set `x-forwarded-proto`. Deliberately not keyed off `NODE_ENV`:
+  `next start` sets production, and a browser will not store a `Secure` cookie
+  over plain HTTP, so sign-in would fail silently on an internal HTTP
+  deployment. `FREIGHT_FORCE_SECURE_COOKIES=true` pins it on.
+
+
+A workspace where nobody can sign in offers to create the first account, which
+becomes the Logistics Operations Manager for every existing company. Once one
+account can sign in, that route refuses — it cannot be used to add a second
+back door later.
+
+Loading the demonstration dataset is also allowed on a workspace nobody can
+sign in to, because that is the other way to bootstrap. After that it needs a
+signed-in manager, since it wipes everything.
+
+### Demonstration accounts
+
+The demo dataset creates three accounts with **real, hashed passwords** —
+sign-in is not bypassed for the demo. The sign-in page lists them, with the
+shared password, but only while the workspace is flagged as holding demo data.
+On a real workspace it lists nothing, so the endpoint cannot enumerate users.
+
+### Cookies and TLS
+
+The session cookie is `httpOnly`, `sameSite=lax`, and `Secure` **when the
+request arrived over HTTPS** — or over a proxy that set `x-forwarded-proto`.
+It is deliberately not keyed off `NODE_ENV`: `next start` sets production, a
+browser will not store a `Secure` cookie over plain HTTP, and sign-in would
+then fail silently on any internal HTTP deployment. Set
+`FREIGHT_FORCE_SECURE_COOKIES=true` to pin it on behind TLS you know is there.
+
+### What is still not built
+
+- No password reset or invitation email. An administrator sets a password
+  directly; there is no SMTP flow for it.
+- No multi-factor authentication.
+- No self-service account management screen. Accounts come from the seed or
+  from first-run setup.
+
+### Automation is separate, and deliberately so
+
+The `/api/freight/automation/*` endpoints and `/api/freight/collect` take a
+bearer token rather than a session, because a scheduler has no session. They
+run as system identities that can neither approve nor send. See
+`docs/FREIGHT_N8N.md`.
 
 ## Safety defaults
 

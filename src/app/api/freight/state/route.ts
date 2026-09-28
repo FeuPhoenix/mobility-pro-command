@@ -10,6 +10,7 @@ import { authMode, entraConfig } from '@/freight/auth/config';
 import { listPeople } from '@/freight/auth/people';
 import { listRfqRequests } from '@/freight/repo';
 import { intakeEnabled } from '@/freight/service/intake';
+import { needsFirstRunSetup } from '@/freight/auth/password';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,12 +19,21 @@ export async function GET(request: Request) {
   const mode = authMode();
   const ctx = await tryResolveCtx();
   if (!ctx) {
-    return NextResponse.json({
+    const body = {
       seeded: false,
       users: [],
       companies: [],
-      auth: { mode, signedIn: false, problems: mode === 'entra' ? entraConfig().problems : [] },
-    });
+      auth: {
+        mode,
+        signedIn: false,
+        needsSetup: mode === 'password' ? needsFirstRunSetup() : false,
+        problems: mode === 'entra' ? entraConfig().problems : [],
+      },
+    };
+    // In demo mode there is nobody to sign in as, so this is just an empty
+    // workspace. In the two real modes it means "sign in", and the client
+    // redirects on a 401.
+    return mode === 'demo' ? NextResponse.json(body) : NextResponse.json(body, { status: 401 });
   }
 
   const url = new URL(request.url);
@@ -77,7 +87,7 @@ export async function GET(request: Request) {
       remindersAfterDays: getSetting('reminders.afterDays', 3),
       remindersMaxRounds: getSetting('reminders.maxRounds', 2),
       preselectLane: getSetting('recipients.preselectLane', false),
-      closeAtDeadline: getSetting('collection.closeAtDeadline', false),
+      closeAtDeadline: getSetting('collection.autoCloseOnDeadline', false),
     },
   });
 }
