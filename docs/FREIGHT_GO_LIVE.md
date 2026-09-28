@@ -1,6 +1,6 @@
 # Freight RFQ — what is left, and who does it
 
-All the code for W1–W5 is on `dev`. What remains needs a person: a decision
+All the code for W1–W5, and the deployment kit for W6, is on `dev`. What remains needs a person: a decision
 from the customer, an administrator in Microsoft 365 or ERPNext, or a server.
 None of it is a code change unless a decision changes the scope.
 
@@ -23,7 +23,7 @@ Ask these first; several steps below wait on them. Each has a working default.
 | 5 | Who may approve outgoing email? | Logistics Operations Manager role only | D |
 | 6 | Ranking weights (cost 60 / transit 25 / free days 15) | As shown | Settings |
 | 7 | Currency policy: pull a daily rate feed, and from where? | Rates entered by hand, with source and date | Later work |
-| 8 | Who selects providers, and when is collection complete? | Manager, explicitly | Nothing |
+| 8 | Who selects providers, and when is collection complete? | Manager, explicitly | Settings → Optional automation (lane pre-selection, close at deadline), both off |
 | 9 | Company names exactly as they appear in ERPNext | This application's names | C (`ERPNEXT_COMPANY_MAP`) |
 
 ## B. Microsoft 365 email (W1 + W2)
@@ -109,29 +109,33 @@ everything; it is switched off in sign-in mode for that reason.
 deliberately incomplete email shows under *RFQ requests by email* on Replies
 with its problems listed.
 
-## F. Deployment (W6) — not built yet
+## F. Deployment (W6)
 
-**Who:** you, then me or whoever continues the code.
+**Who:** you choose the host; whoever runs servers follows
+`docs/FREIGHT_DEPLOYMENT.md`.
 
-The freight module needs a normal, long-running Node 22.5+ server with a
-**writable, backed-up disk** for `data/` (the SQLite database and attachments).
-It does not work on read-only serverless hosting such as Vercel functions.
-Choose a host (a small VM, Azure App Service on Linux with a persistent volume,
-Railway, Fly.io, Render with a disk), give it HTTPS and an address, and
-decide who backs up `data/`. Then the deployment itself is about a day of work:
-build, service definition, environment, backups, and the redirect URI in D.
+The kit is built: `Dockerfile`, `deploy/docker-compose.yml` (with a daily
+backup), systemd units for a plain Linux server, `GET /api/health`, and
+`npm run backup`. What it needs from you:
 
-The operations demo at `/` is a separate, stateless demonstration. Decide
-whether it should be reachable on the production address at all.
+1. **Choose a host** with Node 22.5+, a long-running process, a writable,
+   persistent, backed-up disk, and HTTPS on a fixed address. Not read-only
+   serverless (Vercel functions): the freight store needs a disk.
+2. **Build the Docker image once** before relying on it; Docker was not
+   available where this was written, so the Dockerfile has not been run.
+3. Set the configuration (`.env.local`) there, with `AUTH_MODE=entra` for real
+   data, and use the public address for `AUTH_BASE_URL` and the sign-in
+   redirect URI (D).
+4. Schedule the backup daily **and copy it off the server**; test one restore.
+5. Decide whether the operations demo at `/` should be reachable on the
+   production address (blocking it at the proxy is described in the guide).
+
+**Done when:** `/api/health` returns 200 on the public address, a sign-in works,
+and a backup has been restored once on a spare machine.
 
 ## G. Housekeeping on this machine
 
-- `npm ci` reported 6 dependency vulnerabilities (1 critical, 2 high,
-  3 moderate). Run `npm audit` and decide; `npm audit fix --force` can make
-  breaking upgrades, so do not run it blindly.
-- `git stash list` shows an old `package-lock.json` change (npm metadata only);
-  `git stash drop` when you are sure.
-- The local branch `feat/freight-mailbox` duplicates work already on `dev`;
-  delete it when convenient.
+- Dependencies: `npm audit` reports 0 vulnerabilities (Playwright 1.55.1,
+  Vitest 5, uuid 11 forced under exceljs). Re-run it before each release.
 - Open a pull request from `dev` to `main` when you want this reviewed.
 - W7 (AI fallback) stays off until someone explicitly authorises the cost.

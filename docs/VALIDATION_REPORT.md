@@ -1,5 +1,23 @@
 # Validation report
 
+> **Scope and date.** Sections 1–6 below describe the original **operations demo**
+> build and were written before the freight module existed. Its figures (54 unit,
+> 10 browser tests) are that build's. For the whole repository as it stands on
+> 2026-09-28 (Windows 11, Node 22.23.2, Next.js 16.3.5):
+>
+> | Check | Result |
+> | --- | --- |
+> | `npx tsc --noEmit` | Clean |
+> | `npm run build` | Compiles |
+> | `npm test` | **220 passing**: 82 operations demo, 138 freight |
+> | `npm run test:e2e` | **22 passing**: 12 operations demo, 10 freight |
+> | `node scripts/journey.mjs` | **61 passing** (freight, over HTTP) |
+> | `npm audit` | 0 vulnerabilities |
+>
+> What the freight tests cover, and what has not been verified against live
+> services, is in `docs/FREIGHT_HANDOVER.md` (section 3) and
+> `docs/FREIGHT_RFQ_PROGRESS.md`.
+
 What was actually tested, by what means, and what was not tested. Everything below was
 run on this build; nothing is asserted from inspection alone.
 

@@ -101,7 +101,7 @@ name, never a manager's.
   it was made for, so changing the tenant, app or mailbox clears it. Before
   this, nothing ever ran the Graph probe, so "connected" could never appear.
 
-### Status of the work items (2026-09-27)
+### Status of the work items (2026-09-28)
 
 | Item | Code | What is left |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ name, never a manager's.
 | W3 ERPNext write | Done, guarded | Customer picks the destination; create it (`scripts/erpnext-create-doctype.mjs`); live test in `FREIGHT_ERPNEXT.md` |
 | W4 sign-in and roles | Done (`AUTH_MODE=entra`) | App registration, real people list; first sign-in |
 | W5 RFQ by email | Done, off (`RFQ_EMAIL_INTAKE=on`) | Customer confirms they want it |
-| W6 deployment | Not started | Choose a host |
+| W6 deployment | Kit done: Dockerfile, compose, systemd units, `/api/health`, `scripts/backup.mjs`, `FREIGHT_DEPLOYMENT.md` | Choose a host; build the image once (Docker was not available here) |
 | W7 AI fallback | Unchanged, off | Explicit authorisation |
 
 Everything the customer or an administrator must do is in
@@ -211,8 +211,8 @@ Industrial. The MPD requests disappear, and a direct request for one returns
 
 | Check | Result |
 | --- | --- |
-| `npm test` | **210 passed** (82 operations demo, 128 freight) |
-| `npm run test:e2e` | **21 passed** (12 operations demo, 9 freight; browser, real Chrome) |
+| `npm test` | **220 passed** (82 operations demo, 138 freight) |
+| `npm run test:e2e` | **22 passed** (12 operations demo, 10 freight; browser, real Chrome) |
 | `node scripts/journey.mjs` | **61 passed** over HTTP against a running server |
 | `npm run build` | Compiles clean; existing routes unchanged |
 | `npx tsc --noEmit` | Clean |
@@ -247,14 +247,14 @@ each default is the smallest reversible choice.
 
 | Question | What it does today | What changing it costs |
 | --- | --- | --- |
-| **How do RFQs start?** Excel, email or a form? | A form, plus a downloadable Excel template and import | Email intake is an extension point. The parsing and matching already exist; it needs the same scheduled fetch as reply collection |
-| **Who selects providers?** | The manager selects explicitly, with filters and a visible recipient review | Auto-suggestion by lane is already computed and shown ("Serves this lane"); turning it into a default selection is small |
-| **When is collection complete?** | The manager closes it explicitly. The deadline is shown and counted down but does not close anything | A deadline-driven close is a setting plus a scheduled job |
+| **How do RFQs start?** Excel, email or a form? | A form, the Excel template (download and import), and email intake (built, off: `RFQ_EMAIL_INTAKE=on`) | Switch email intake on if wanted |
+| **Who selects providers?** | The manager selects explicitly, with filters and a visible recipient review | Built as a setting, off: *Pre-select providers that serve the lane* (Settings → Optional automation) |
+| **When is collection complete?** | The manager closes it explicitly | Built as a setting, off: *Close collection when the response deadline passes* |
 | **Where does the outcome go in ERPNext?** | Nowhere yet, by design. See `FREIGHT_ERPNEXT.md` | This is the largest open item. Needs an hour with whoever owns the ERPNext instance |
 | **Are providers already Suppliers in ERPNext?** | Provider records are independent | If yes, they should carry the supplier id so the two stay aligned |
 | **Ranking criteria** | Cost 60%, transit 25%, free days 15%, adjustable per comparison | Confirm with the manager; the defaults are a starting point, not a recommendation |
 | **Currency policy** | Offers in another currency are flagged unless a rate with a source and date is recorded | Confirm whether a daily rate feed should be pulled, and from where |
-| **Who may approve?** | Only the Logistics Operations Manager role | Needs the real list of people and roles, and authentication |
+| **Who may approve?** | Only the Logistics Operations Manager role | Sign-in and the People screen are built (`AUTH_MODE=entra`); needs the real list of people |
 
 ---
 
@@ -269,6 +269,7 @@ src/freight/
   auth/               sign-in (OIDC), signed cookies, the People rules
   system.ts           the Mailbox Collector, the one non-person identity
   schedule.ts         the in-process collection timer (off unless configured)
+  ops.ts              the health check behind /api/health
   actions.ts          the single mutation boundary, validated with zod
   view.ts             read models for the screens
   files.ts            attachment storage and validation
@@ -287,6 +288,10 @@ tests/freight.test.ts business-rule tests
 tests/mailbox.test.ts mailbox collection, the collector identity, Graph faked
 tests/e2e/freight.spec.ts browser journeys
 scripts/journey.mjs   end-to-end HTTP check
+scripts/backup.mjs    consistent backup of the store (npm run backup)
+scripts/erpnext-create-doctype.mjs  creates the proposed ERPNext destination
+deploy/               docker-compose, systemd units for the app and daily backup
+Dockerfile            production image; /app/data must be a volume
 ```
 
 The operations demo that already existed in this repository is untouched. Its

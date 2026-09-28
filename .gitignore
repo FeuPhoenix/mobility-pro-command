@@ -21,3 +21,5 @@ brag-output/
 # rebuilt by "Load demo data", so neither belongs in the repository.
 data/
 .freight-data-e2e/
+# Local backups made by scripts/backup.mjs.
+backups/

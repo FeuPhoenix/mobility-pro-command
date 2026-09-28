@@ -2,6 +2,9 @@
   "name": "mobility-pro-command",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.5"
+  },
   "description": "Mobility Pro Command - intelligent operational layer demo alongside ERPNext",
   "scripts": {
     "dev": "next dev -p 4310",
@@ -10,7 +13,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "backup": "node --no-warnings scripts/backup.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

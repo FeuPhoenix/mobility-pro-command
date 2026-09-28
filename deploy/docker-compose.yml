@@ -1,0 +1,32 @@
+# One server, one container, the freight store on a named volume.
+#
+#   cd deploy && docker compose up -d --build
+#
+# Put the configuration in ../.env.local (see ../.env.example). Terminate
+# HTTPS in front of this (a reverse proxy, or the host's load balancer): sign-in
+# cookies are marked Secure when AUTH_BASE_URL is https://.
+
+services:
+  app:
+    build: ..
+    restart: unless-stopped
+    ports:
+      - "4310:4310"
+    env_file: ../.env.local
+    volumes:
+      - freight-data:/app/data
+
+  # Daily backup of the store, kept 14 days. Copy ./backups off the server too.
+  backup:
+    build: ..
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      FREIGHT_DATA_DIR: /app/data
+    volumes:
+      - freight-data:/app/data
+      - ./backups:/app/backups
+    entrypoint: ["sh", "-c", "while true; do node --no-warnings scripts/backup.mjs /app/backups 14; sleep 86400; done"]
+
+volumes:
+  freight-data:

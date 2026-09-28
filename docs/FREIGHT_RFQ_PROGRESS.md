@@ -168,3 +168,23 @@ Defects found while doing it:
     Found by a parser test written before the code was trusted, exactly as the
     handover advised; separators are now removed first.
 
+## 2026-09-28 — Finishing: import, automation, deployment kit, dependencies
+
+Branch: `dev`.
+
+- [x] Import a filled-in RFQ template on New request (only the download
+      existed); it fills the form and never writes
+- [x] Settings → Optional automation, both off: pre-select providers serving
+      the lane; close collection at the deadline (as the system identity
+      "Response deadline (automatic)")
+- [x] W6 kit: Dockerfile, compose with daily backup, systemd units,
+      `/api/health`, `scripts/backup.mjs` (SQLite online backup, safe while
+      running), `docs/FREIGHT_DEPLOYMENT.md`, `engines: node >=22.5`
+- [x] `npm audit`: 6 findings to 0 (Playwright 1.55.1, Vitest 5, uuid 11)
+- [x] Tests: 220 unit, 22 browser, 61 journey
+
+Found while doing it: the health check correctly reported "unable to open
+database file" when the data folder's path exceeded Windows' 260-character
+limit. Not an application defect, but worth knowing on Windows hosts: keep
+`FREIGHT_DATA_DIR` short.
+

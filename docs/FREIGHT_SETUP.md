@@ -25,8 +25,8 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 210 business-logic tests (Vitest)
-npm run test:e2e     # 21 browser journeys (Playwright, uses your installed Chrome)
+npm test             # 220 business-logic tests (Vitest)
+npm run test:e2e     # 22 browser journeys (Playwright, uses your installed Chrome)
 node scripts/journey.mjs   # 61 end-to-end checks over HTTP against a running server
 ```
 
@@ -44,7 +44,8 @@ the demonstration dataset**, so do not point it at anything you care about.
 Both are git-ignored. Override the location with `FREIGHT_DATA_DIR`. Delete the
 directory to start clean, or use **Load demo data** in the application.
 
-> **Deployment note.** The freight module needs a writable filesystem. It runs
+> **Deployment:** see `docs/FREIGHT_DEPLOYMENT.md` (Docker, systemd, health
+> check, backups). The freight module needs a writable filesystem. It runs
 > locally and on any normal Node host. It will **not** work on a read-only
 > serverless filesystem — the operations demo elsewhere in this repository is
 > deliberately stateless for that reason, but this module cannot be, because an
