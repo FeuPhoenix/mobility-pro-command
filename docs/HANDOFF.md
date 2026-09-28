@@ -14,6 +14,7 @@ answers recorded, `.eml` reading and the ERPNext quotation destination added).
 | Document | When you need it |
 | --- | --- |
 | This file | First. Orientation and what to do next. |
+| `CLIENT_ASKS.md` | What we are waiting on from the customer, and who owns it. |
 | `FREIGHT_SETUP.md` | Running it, configuration, access control. |
 | `FREIGHT_HANDOVER.md` | Full capability list and the demonstration walkthrough. |
 | `FREIGHT_ERPNEXT.md` | Before touching ERPNext. Has the open questions. |
