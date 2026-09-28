@@ -212,3 +212,12 @@ Found while doing it: an empty `FREIGHT_DB_FILE=` line made the backup
 script, and the application, look for a database with no path, because `??`
 does not treat an empty string as unset. Both now fall back to the default.
 
+
+## 2026-09-29 — Handover tidy-up
+
+Tagged `v1.1-handover` on `main`.
+
+- [x] Removed a pilot workspace (`.freight-pilot/`, demo data only) that was
+      committed by mistake with the send-by-hand change; it is now ignored
+- [x] Test counts brought up to date everywhere: 394 unit (+9 skipped),
+      26 browser (+4 skipped), 65 journey; build and type check clean

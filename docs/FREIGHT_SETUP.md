@@ -25,8 +25,8 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 355 unit tests (Vitest), 6 skipped without a live ERPNext
-npm run test:e2e     # 24 browser tests + 4 skipped (Playwright, uses your installed Chrome)
+npm test             # 394 unit tests (Vitest), 9 skipped without a live ERPNext
+npm run test:e2e     # 26 browser tests + 4 skipped (Playwright, uses your installed Chrome)
 node scripts/journey.mjs   # 65 end-to-end checks over HTTP against a running server
 ```
 

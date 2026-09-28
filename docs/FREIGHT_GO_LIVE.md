@@ -164,7 +164,7 @@ its data, a backup passes `restore --check`, and **Go-live readiness** says
   `@vitest/coverage-v8` 5), and `uuid` forced to 11.1.1 under exceljs through
   `overrides` rather than downgrading exceljs. Re-run `npm audit` before each
   release.
-- The handover version is on `main`, tagged `v1.0-handover`.
+- The handover version is on `main`, tagged `v1.1-handover` (`v1.0-handover` is the earlier cut, before sending by hand).
 - Handover paperwork: `docs/FREIGHT_ACCEPTANCE.md` (guarantees, live-check
   results, sign-off), `docs/FREIGHT_OWNERSHIP.md` (owners, secrets and their
   expiry, backups), `docs/FREIGHT_USER_GUIDE.md` (for the logistics team).
