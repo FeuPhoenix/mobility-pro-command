@@ -115,7 +115,7 @@ name, never a manager's.
 | W3 ERPNext write | Done, guarded | Customer picks the destination; create it (`scripts/erpnext-create-doctype.mjs`); live test in `FREIGHT_ERPNEXT.md` |
 | W4 sign-in and roles | Done (`AUTH_MODE=entra`) | App registration, real people list; first sign-in |
 | W5 RFQ by email | Done, off (`RFQ_EMAIL_INTAKE=on`) | Customer confirms they want it |
-| W6 deployment | Not started | Choose a host |
+| W6 deployment | Artefacts ready: Docker, health check, backup and restore, Go-live readiness | Choose a host; `FREIGHT_GO_LIVE.md` section F |
 | W7 AI fallback | Unchanged, off | Explicit authorisation |
 
 Everything the customer or an administrator must do is in
