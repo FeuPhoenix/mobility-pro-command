@@ -189,15 +189,39 @@ const NOT_A_CHARGE_LINE =
  * `amount: null`. That is the whole point: the comparison needs to know the
  * charge exists in order to refuse to treat it as zero.
  */
+/** A money line the parser could not place. */
+export interface UnplacedLine {
+  line: number;
+  text: string;
+}
+
+export interface SurchargeScan {
+  surcharges: Surcharge[];
+  /**
+   * Lines carrying an amount that matched no rule.
+   *
+   * These are the charges we would otherwise lose in silence. Every provider
+   * words their tariff differently, so a line we do not recognise is expected
+   * - what is not acceptable is a reviewer never learning it was there.
+   */
+  unplaced: UnplacedLine[];
+}
+
 export function parseSurcharges(source: TextSource): Surcharge[] {
+  return scanCharges(source).surcharges;
+}
+
+export function scanCharges(source: TextSource): SurchargeScan {
   const lines = normaliseLines(source.text);
   const found: Surcharge[] = [];
+  const unplaced: UnplacedLine[] = [];
   const seen = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
     if (NOT_A_CHARGE_LINE.test(line)) continue;
+    let placed = false;
     for (const p of SURCHARGE_PATTERNS) {
       if (!p.pattern.test(line)) continue;
       // The patterns run most-specific first, so "Origin THC" must not also be
@@ -222,10 +246,34 @@ export function parseSurcharges(source: TextSource): Surcharge[] {
         sourceRef: `${source.label}, line ${i + 1}`,
         confidence: amount === null ? 'missing' : currency ? 'high' : 'medium',
       });
+      placed = true;
       break;
     }
+
+    if (!placed && looksLikeACharge(line)) unplaced.push({ line: i + 1, text: line.trim() });
   }
-  return found;
+  return { surcharges: found, unplaced };
+}
+
+/**
+ * Whether an unmatched line looks like it was charging for something.
+ *
+ * Deliberately narrow. Reporting every line with a number in it would bury the
+ * reviewer in dates, container counts and transit times, and a warning nobody
+ * reads is worse than none.
+ */
+function looksLikeACharge(line: string): boolean {
+  // An explicit currency list, and a real digit. [A-Z]{3} under /i matched any
+  // three letters followed by punctuation, so the greeting "Hala," read as an
+  // amount and every quotation reported its own salutation as a charge.
+  const money =
+    /\b(?:USD|EUR|EGP|GBP|CNY|AED|CHF|JPY|SAR|TRY)\s*\d[\d,.]*|\b\d[\d,.]*\s*(?:USD|EUR|EGP|GBP|CNY|AED|CHF|JPY|SAR|TRY)\b/i;
+  if (!money.test(line)) return false;
+  // The figures a quotation states about itself, not charges. Whole phrases:
+  // "transit time" is a fact about the offer, while "transit levy" is a charge.
+  if (/\b(transit (time|days?)|sailing|etd|eta|valid until|free days?|demurrage|\d+\s*days?)\b/i.test(line)) return false;
+  if (/\b(ocean freight|base rate|base freight|all[- ]in|total)\b/i.test(line)) return false;
+  return true;
 }
 
 function detectBasis(line: string): ChargeBasis | null {
@@ -259,6 +307,8 @@ export interface TextExtraction {
   exclusions: Extracted<string[]>;
   conditions: Extracted<string[]>;
   surcharges: Surcharge[];
+  /** Money lines that matched no charge rule, so a reviewer can see them. */
+  unplacedLines: UnplacedLine[];
   /** True when almost nothing was recognised - the caller may try AI assist. */
   sparse: boolean;
 }
@@ -356,7 +406,7 @@ export function extractFromText(source: TextSource): TextExtraction {
     ? make(parseList(condHit.raw), 'medium', source, condHit)
     : missing<string[]>('No additional conditions were stated.');
 
-  const surcharges = parseSurcharges(source);
+  const { surcharges, unplaced } = scanCharges(source);
 
   const recognised = [baseFreight, transitDays, validUntil, totalQuoted].filter(
     (f) => f.value !== null,
@@ -377,6 +427,7 @@ export function extractFromText(source: TextSource): TextExtraction {
     exclusions,
     conditions,
     surcharges,
+    unplacedLines: unplaced,
     sparse: recognised < 2,
   };
 }

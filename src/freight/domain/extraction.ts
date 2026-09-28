@@ -238,6 +238,7 @@ function blank(over: Partial<QuoteBody>): QuoteBody {
     containerBasis: missing<ContainerType>('Not stated.'),
     baseFreight: missing<number>('Not stated.'),
     surcharges: [] as Surcharge[],
+    unplacedLines: [] as { line: number; text: string }[],
     totalQuoted: missing<number>('Not stated.'),
     transitDays: missing<number>('Not stated.'),
     freeDaysDestination: missing<number>('Not stated.'),
@@ -317,6 +318,15 @@ export function uncertainFields(q: Quote): string[] {
   check('Validity', q.validUntil);
   for (const s of q.surcharges) {
     if (s.amount === null) out.push(`${s.label} has no amount`);
+  }
+  // A charge the reader could not place is exactly what the summary must not
+  // describe as read cleanly.
+  if (q.unplacedLines.length > 0) {
+    out.push(
+      q.unplacedLines.length === 1
+        ? '1 line with an amount was not recognised'
+        : `${q.unplacedLines.length} lines with an amount were not recognised`,
+    );
   }
   return out;
 }

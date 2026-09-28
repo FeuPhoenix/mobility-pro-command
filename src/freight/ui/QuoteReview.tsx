@@ -197,6 +197,25 @@ export function QuoteReview({ view, onChanged }: { view: QuoteView; onChanged: (
               </div>
             )}
 
+            {q.unplacedLines.length > 0 ? (
+              <div style={{ marginTop: 16 }}>
+                <h3 style={{ fontSize: 13, marginBottom: 6 }}>
+                  Lines with an amount that were not recognised
+                </h3>
+                <p className="small muted" style={{ marginTop: 0, marginBottom: 8 }}>
+                  These name a figure the reader could not match to a known charge. Check whether any of
+                  them belongs in the comparison and add it above; nothing here is counted until you do.
+                </p>
+                <ul className="small" style={{ paddingLeft: 18, lineHeight: 1.7, margin: 0 }}>
+                  {q.unplacedLines.map((l) => (
+                    <li key={l.line}>
+                      <span className="muted">line {l.line}:</span> {l.text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <ListFacts quote={q} />
 
             <div className="row" style={{ gap: 8, marginTop: 16, flexWrap: 'wrap' }}>

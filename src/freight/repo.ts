@@ -825,6 +825,7 @@ type QuoteFields = Pick<
   | 'inclusions'
   | 'exclusions'
   | 'conditions'
+  | 'unplacedLines'
 >;
 
 export function emptyExtracted<T>(note: string | null = null): Extracted<T> {
@@ -916,6 +917,7 @@ function quoteFields(q: Quote): QuoteFields {
     inclusions: q.inclusions,
     exclusions: q.exclusions,
     conditions: q.conditions,
+    unplacedLines: q.unplacedLines,
   };
 }
 
@@ -940,6 +942,9 @@ function rowToQuote(r: Record<string, unknown>): Quote {
     containerBasis: f.containerBasis ?? emptyExtracted<ContainerType>(),
     baseFreight: f.baseFreight ?? emptyExtracted<number>(),
     surcharges: f.surcharges ?? [],
+    // Older rows predate this, and an absent list is not a claim that the
+    // parser understood everything.
+    unplacedLines: f.unplacedLines ?? [],
     totalQuoted: f.totalQuoted ?? emptyExtracted<number>(),
     transitDays: f.transitDays ?? emptyExtracted<number>(),
     freeDaysDestination: f.freeDaysDestination ?? emptyExtracted<number>(),

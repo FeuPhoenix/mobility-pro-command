@@ -197,6 +197,24 @@ test.describe('freight workspace', () => {
     await page.screenshot({ path: `${SHOTS}/06-comparison.png`, fullPage: true });
   });
 
+  test('a charge the reader did not recognise reaches the reviewer', async ({ page }) => {
+    await loadDemo(page);
+    await page.goto('/freight/rfqs');
+    await page.getByRole('link', { name: /RFQ-MPD-2026-0001/ }).first().click();
+    await page.getByRole('tab', { name: /Quotes/ }).click();
+
+    // One demo provider words a charge in a way no rule covers. It must be put
+    // in front of a person, not dropped - a quotation missing a charge looks
+    // cheaper than it is.
+    await page.getByRole('button', { name: /Levant Maritime Services/ }).first().click();
+    await expect(page.getByText('Lines with an amount that were not recognised')).toBeVisible();
+    const list = page.locator('h3:has-text("not recognised") + p + ul');
+    await expect(list).toContainText('Low sulphur fuel levy');
+    // Only the charge: a panel that also lists greetings is one nobody reads.
+    await expect(list.locator('li')).toHaveCount(1);
+    await page.screenshot({ path: `${SHOTS}/14-unrecognised-charge.png`, fullPage: true });
+  });
+
   test('the comparison email is prepared, approved and only then sent', async ({ page }) => {
     await loadDemo(page);
     await openMainRfq(page);

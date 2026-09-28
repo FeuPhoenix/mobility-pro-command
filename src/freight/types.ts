@@ -530,6 +530,14 @@ export interface Quote {
   inclusions: Extracted<string[]>;
   exclusions: Extracted<string[]>;
   conditions: Extracted<string[]>;
+  /**
+   * Lines that named an amount the parser could not classify.
+   *
+   * Every provider words their tariff differently, so meeting an unfamiliar
+   * charge is expected. Losing it in silence is not: these are shown to the
+   * reviewer, who can add the charge by hand or ask for a rule.
+   */
+  unplacedLines: { line: number; text: string }[];
 
   /** Extractor that produced this, e.g. "deterministic/excel@1". Observability. */
   extractorId: string;

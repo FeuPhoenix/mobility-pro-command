@@ -316,6 +316,7 @@ BAF: USD 160.00 per container
 THC origin: USD 115.00 per container
 ISPS: USD 12.00 per container
 Doc fee: USD 40.00 per B/L
+Low sulphur fuel levy: USD 95.00 per container
 Total cost: USD 12,622.00
 Transit: 24 days
 Free time: 14 days at destination
