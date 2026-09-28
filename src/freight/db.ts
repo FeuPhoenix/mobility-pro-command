@@ -319,7 +319,7 @@ export function db(): DatabaseSync {
   }
   mkdirSync(DATA_DIR, { recursive: true });
   mkdirSync(ATTACHMENT_DIR, { recursive: true });
-  const file = process.env.FREIGHT_DB_FILE ?? path.join(DATA_DIR, 'freight.db');
+  const file = process.env.FREIGHT_DB_FILE || path.join(DATA_DIR, 'freight.db');
   const handle = new DatabaseSync(file);
   handle.exec(SCHEMA);
   migrate(handle);

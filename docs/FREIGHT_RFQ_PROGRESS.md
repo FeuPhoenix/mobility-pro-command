@@ -192,3 +192,23 @@ the deadline identity, and `assertCanSend` refuses every system identity.
 
 Worth knowing on Windows hosts: SQLite cannot open a database whose full path
 exceeds 260 characters. Keep `FREIGHT_DATA_DIR` short.
+
+## 2026-09-28 — Preparing the handover
+
+Branch: `dev`, then `main`, tagged `v1.0-handover`.
+
+- [x] Backups include the attachments; `scripts/restore.mjs` checks a backup
+      in a throwaway copy (`--check`) or restores one, keeping what it replaced
+- [x] `OPERATIONS_DEMO=off` removes the fictional operations demo from inside
+      the application (`src/proxy.ts`)
+- [x] Settings → Go-live readiness: sign-in, HTTPS, demo data, people,
+      companies, data folder, backup age, email, collection, ERPNext, the
+      operations demo — each with what to do
+- [x] `docs/FREIGHT_ACCEPTANCE.md`, `docs/FREIGHT_OWNERSHIP.md`,
+      `docs/FREIGHT_USER_GUIDE.md`
+- [x] Tests: 355 unit (+6 skipped), 24 browser (+4 skipped), 65 journey
+
+Found while doing it: an empty `FREIGHT_DB_FILE=` line made the backup
+script, and the application, look for a database with no path, because `??`
+does not treat an empty string as unset. Both now fall back to the default.
+

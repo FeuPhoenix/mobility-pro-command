@@ -120,7 +120,10 @@ A container definition and its storage are in the repository now:
 | `Dockerfile` | Node 24 build, runs unprivileged, storage on a volume at `/data` |
 | `docker-compose.yml` | One service, a named volume, a health check |
 | `/api/freight/health` | Unauthenticated liveness: opens the database and queries it |
-| `scripts/backup.mjs` | `VACUUM INTO` snapshot, safe while running, prunes to `--keep` |
+| `scripts/backup.mjs` | `VACUUM INTO` snapshot of the database **and a copy of the attachments**, safe while running, prunes to `--keep` (`npm run backup`) |
+| `scripts/restore.mjs` | `--check` verifies a backup in a throwaway copy; `--yes` restores, keeping what it replaces (`npm run restore`) |
+| `OPERATIONS_DEMO=off` | Switches the fictional operations demo off inside the app: its routes 404, `/` opens the freight workspace |
+| Settings → **Go-live readiness** | The application checks its own deployment: sign-in, demo data, people, email, ERPNext, backups, the operations demo |
 
 1. Choose a host with a **writable, backed-up disk**: a small VM, Azure App
    Service on Linux with a persistent volume, Railway, Fly.io, Render with a
@@ -132,20 +135,21 @@ A container definition and its storage are in the repository now:
    `x-forwarded-proto`, or set `FREIGHT_FORCE_SECURE_COOKIES=true`. Cookie
    security follows the request, deliberately — see the note in section 7 of
    `docs/HANDOFF.md`.
-4. Schedule `node scripts/backup.mjs` nightly, and back up the whole `/data`
-   volume as well: the script covers the database, not the attachments beside
-   it.
-5. Restore-test it once, before there is anything worth losing.
+4. Schedule `npm run backup -- --out=<folder> --keep=14` nightly (it now
+   includes the attachments), and copy the backups **off the server**.
+5. Restore-test one: `npm run restore -- --from=<folder>/freight-<stamp>.db --check`.
+6. Set `OPERATIONS_DEMO=off` unless the operations demo should be reachable.
+7. As a manager, open **Settings → Go-live readiness** and clear every
+   *Not ready* item.
 
 The image, the volume, the health check and the in-container backup were all
-exercised locally on 27 September. TLS, a real host and a restore were not.
+exercised locally on 27 September; backup with attachments, check and restore,
+and `OPERATIONS_DEMO=off` on 28 September. TLS and a real host were not.
 
 **Done when:** `/api/freight/health` answers `{"ok":true}` through the proxy,
 sign-in works over HTTPS, the container survives `docker compose restart` with
-its data, and a backup has been restored into a throwaway copy and opened.
-
-The operations demo at `/` is a separate, stateless demonstration. Decide
-whether it should be reachable on the production address at all.
+its data, a backup passes `restore --check`, and **Go-live readiness** says
+*Ready*. Record each in `docs/FREIGHT_ACCEPTANCE.md` part 2.
 
 ## G. Housekeeping on this machine
 
@@ -154,5 +158,8 @@ whether it should be reachable on the production address at all.
   `@vitest/coverage-v8` 5), and `uuid` forced to 11.1.1 under exceljs through
   `overrides` rather than downgrading exceljs. Re-run `npm audit` before each
   release.
-- `dev` holds the work since `main` as a normal merge of `main`; merge it (or open a pull request) when you want it on `main`.
+- The handover version is on `main`, tagged `v1.0-handover`.
+- Handover paperwork: `docs/FREIGHT_ACCEPTANCE.md` (guarantees, live-check
+  results, sign-off), `docs/FREIGHT_OWNERSHIP.md` (owners, secrets and their
+  expiry, backups), `docs/FREIGHT_USER_GUIDE.md` (for the logistics team).
 - W7 (AI fallback) stays off until someone explicitly authorises the cost.

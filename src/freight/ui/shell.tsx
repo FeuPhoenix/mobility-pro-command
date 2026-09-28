@@ -77,10 +77,14 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
 
-          <div className="rail-group-label">Other modules</div>
-          <Link href="/" className="rail-link">
-            Operations demo
-          </Link>
+          {state?.operationsDemo === false ? null : (
+            <>
+              <div className="rail-group-label">Other modules</div>
+              <Link href="/" className="rail-link">
+                Operations demo
+              </Link>
+            </>
+          )}
         </div>
 
         <div className="rail-foot">

@@ -25,7 +25,7 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 339 unit tests (Vitest), 6 skipped without a live ERPNext
+npm test             # 355 unit tests (Vitest), 6 skipped without a live ERPNext
 npm run test:e2e     # 24 browser tests + 4 skipped (Playwright, uses your installed Chrome)
 node scripts/journey.mjs   # 65 end-to-end checks over HTTP against a running server
 ```
@@ -44,8 +44,10 @@ the demonstration dataset**, so do not point it at anything you care about.
 Both are git-ignored. Override the location with `FREIGHT_DATA_DIR`. Delete the
 directory to start clean, or use **Load demo data** in the application.
 
-> **Deployment:** `Dockerfile`, `docker-compose.yml`, `/api/freight/health` and
-> `scripts/backup.mjs`; the checklist is section F of `docs/FREIGHT_GO_LIVE.md`.
+> **Deployment:** `Dockerfile`, `docker-compose.yml`, `/api/freight/health`,
+> `npm run backup` (database and attachments), `npm run restore -- --check`,
+> `OPERATIONS_DEMO=off`, and Settings → Go-live readiness. The checklist is
+> section F of `docs/FREIGHT_GO_LIVE.md`.
 > The freight module needs a writable filesystem. It runs
 > locally and on any normal Node host. It will **not** work on a read-only
 > serverless filesystem — the operations demo elsewhere in this repository is

@@ -6,6 +6,8 @@ import { listCompanyProviders } from '@/freight/repo';
 import { tryResolveCtx, USER_COOKIE } from '@/freight/session';
 import { getSetting } from '@/freight/db';
 import { RELATIONSHIP_LABEL } from '@/freight/types';
+import { operationsDemoEnabled } from '@/operationsDemo';
+import { checkReadiness } from '@/freight/readiness';
 import { authMode, entraConfig } from '@/freight/auth/config';
 import { listPeople } from '@/freight/auth/people';
 import { listRfqRequests } from '@/freight/repo';
@@ -81,6 +83,9 @@ export async function GET(request: Request) {
     inbox: listInbound(ctx),
     rfqRequests: { enabled: intakeEnabled(), items: listRfqRequests(ctx) },
     integrations: integrationStatus(),
+    operationsDemo: operationsDemoEnabled(),
+    // Managers only: it describes the whole deployment, not one company.
+    readiness: ctx.user.role === 'logistics_manager' ? checkReadiness() : null,
     settings: {
       criteria: getSetting('ranking.criteria', null),
       fxRates: getSetting('fx.rates', []),

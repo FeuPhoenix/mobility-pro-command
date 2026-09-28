@@ -38,6 +38,7 @@ export default function SettingsPage() {
           <OptionalAutomationCard />
         </div>
         <div className="stack">
+          <ReadinessCard />
           <IntegrationsCard />
           <PeopleCard />
           <AutomationCard />
@@ -246,6 +247,41 @@ function RemindersCard() {
             Save
           </button>
         </div>
+      </div>
+    </Card>
+  );
+}
+
+function ReadinessCard() {
+  const { state } = useFreight();
+  const r = state?.readiness;
+  if (!r) return null;
+  const tone = (s: 'ok' | 'warn' | 'fail') => (s === 'ok' ? 'good' : s === 'warn' ? 'neutral' : 'bad');
+  const label = { ok: 'Ready', warn: 'Check', fail: 'Not ready' } as const;
+  const order = { fail: 0, warn: 1, ok: 2 } as const;
+
+  return (
+    <Card>
+      <CardHead
+        title="Go-live readiness"
+        hint="What this application can check about its own deployment. The steps that need a person are in docs/FREIGHT_GO_LIVE.md."
+        right={<Pill tone={r.ready ? 'good' : 'bad'}>{r.ready ? 'Ready' : `${r.counts.fail} to fix`}</Pill>}
+      />
+      <div className="card-body stack" data-testid="readiness">
+        {[...r.checks]
+          .sort((a, b) => order[a.status] - order[b.status])
+          .map((c) => (
+            <div key={c.id}>
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <Pill tone={tone(c.status)}>{label[c.status]}</Pill>
+                <strong style={{ fontSize: 13 }}>{c.title}</strong>
+                <span className="tiny muted">{c.area}</span>
+              </div>
+              <p className="small muted" style={{ marginTop: 3, lineHeight: 1.5 }}>
+                {c.detail}
+              </p>
+            </div>
+          ))}
       </div>
     </Card>
   );

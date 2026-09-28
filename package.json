@@ -14,7 +14,9 @@
     "workflows:build": "node scripts/build-freight-workflows.mjs",
     "n8n:provision": "node scripts/provision-n8n.mjs",
     "n8n:livetest": "node scripts/n8n-live-test.mjs",
-    "n8n:run": "node scripts/n8n-run-workflow.mjs"
+    "n8n:run": "node scripts/n8n-run-workflow.mjs",
+    "backup": "node --no-warnings scripts/backup.mjs",
+    "restore": "node --no-warnings scripts/restore.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

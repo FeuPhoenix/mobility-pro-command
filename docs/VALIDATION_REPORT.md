@@ -9,7 +9,7 @@
 > | --- | --- |
 > | `npx tsc --noEmit` | Clean |
 > | `npm run build` | Compiles |
-> | `npm test` | **339 passing**, 6 skipped without a live ERPNext: 82 operations demo, 257 freight |
+> | `npm test` | **355 passing**, 6 skipped without a live ERPNext: 82 operations demo, 273 freight |
 > | `npm run test:e2e` | **24 passing**, 4 skipped: 12 operations demo, 12 freight |
 > | `node scripts/journey.mjs` | **65 passing** (freight, over HTTP, demo mode) |
 > | `npm audit` | 0 vulnerabilities |

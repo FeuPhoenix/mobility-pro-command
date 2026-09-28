@@ -28,7 +28,7 @@ npm start          # http://localhost:4310
 Tests:
 
 ```bash
-npm test           # 339 unit tests (Vitest), 6 skipped without a live ERPNext
+npm test           # 355 unit tests (Vitest), 6 skipped without a live ERPNext
 npm run test:e2e   # browser journey tests (Playwright, uses your installed Chrome)
 
 # Freight module only:

@@ -19,6 +19,10 @@ answers recorded, `.eml` reading and the ERPNext quotation destination added).
 | `FREIGHT_ERPNEXT.md` | Before touching ERPNext. Has the open questions. |
 | `FREIGHT_N8N.md` | Before touching the automation. |
 | `FREIGHT_W2_LIVE_TEST.md` | When you have Microsoft 365 credentials. |
+| `FREIGHT_GO_LIVE.md` | Everything left before production, and who does it. |
+| `FREIGHT_ACCEPTANCE.md` | The guarantees and their tests, live-check results, sign-off. |
+| `FREIGHT_OWNERSHIP.md` | Owners, secrets and their expiry dates, backups. |
+| `FREIGHT_USER_GUIDE.md` | For the logistics team, day to day. |
 
 ### Get it running (5 minutes)
 
@@ -34,7 +38,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 339 unit tests, 6 skipped without a live ERPNext
+npm test                 # 355 unit tests, 6 skipped without a live ERPNext
 npm run test:e2e         # 24 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```
@@ -98,6 +102,9 @@ test.**
   *Response deadline (automatic)*.
 - **Dependencies:** `npm audit` reports 0 vulnerabilities (Vitest 5, uuid 11
   forced under exceljs).
+- **Operating it:** backups include attachments; `restore --check` and
+  `restore --yes`; `OPERATIONS_DEMO=off`; a Go-live readiness check in
+  Settings.
 - **Scheduled reply collection** from a shared mailbox.
 - **n8n automation** — seven endpoints, five workflows, verified end to end
   against a real n8n 2.40.7 instance.
@@ -190,14 +197,15 @@ stay placeholders, which is how the committed exports ship.
 
 Still never deployed, but the artefacts are here: `Dockerfile`,
 `docker-compose.yml`, an unauthenticated `/api/freight/health` that actually
-queries the database, and `scripts/backup.mjs` for a `VACUUM INTO` snapshot that
-is safe to take while the application runs.
+queries the database, `scripts/backup.mjs` (a `VACUUM INTO` snapshot plus the
+attachments, safe while the application runs), `scripts/restore.mjs` (`--check`
+a backup, or restore one keeping what it replaces), `OPERATIONS_DEMO=off`, and
+**Settings → Go-live readiness**, which checks the deployment from inside.
 
 Needs a **writable filesystem** — not read-only serverless. Behind TLS, either
 terminate with a proxy that sets `x-forwarded-proto` or set
-`FREIGHT_FORCE_SECURE_COOKIES=true`. Back up the whole data volume, not only the
-database: the attachments sit beside it. `docs/FREIGHT_GO_LIVE.md` section F is
-the checklist.
+`FREIGHT_FORCE_SECURE_COOKIES=true`. Copy backups off the server.
+`docs/FREIGHT_GO_LIVE.md` section F is the checklist.
 
 **Verified on 27 September:** the image builds, the container serves the
 workspace, `/api/freight/health` answers `{"ok":true}`, the demonstration data

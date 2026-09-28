@@ -18,6 +18,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { Readiness } from '@/freight/readiness';
 import type { Company, InboundMessage, RankingCriteria, FxRate, RfqRequest, User } from '@/freight/types';
 import type { Overview, IntegrationStatus } from '@/freight/view';
 
@@ -60,6 +61,9 @@ export interface FreightState {
   inbox: InboundMessage[];
   rfqRequests?: { enabled: boolean; items: RfqRequest[] };
   integrations: IntegrationStatus | null;
+  /** False when OPERATIONS_DEMO=off: the older demo is not served at all. */
+  operationsDemo?: boolean;
+  readiness?: Readiness | null;
   settings: {
     criteria: RankingCriteria | null;
     fxRates: FxRate[];
