@@ -169,6 +169,8 @@ CREATE TABLE IF NOT EXISTS emails (
   sent_at TEXT,
   transport_message_id TEXT,
   simulated INTEGER NOT NULL DEFAULT 1,
+  sent_by_hand INTEGER NOT NULL DEFAULT 0,
+  sent_by_hand_by TEXT,
   failure_reason TEXT,
   idempotency_key TEXT NOT NULL UNIQUE,
   created_at TEXT NOT NULL,
@@ -357,6 +359,18 @@ function migrate(handle: DatabaseSync): void {
     // screen refuses to create new duplicates.
   }
   handle.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_external_id_key ON users (external_id) WHERE external_id IS NOT NULL');
+
+  // Sending by hand: a workspace created before this keeps its emails, and an
+  // absent value means nobody claimed to have sent one.
+  const emailColumns = new Set(
+    (handle.prepare('PRAGMA table_info(emails)').all() as { name: string }[]).map((c) => c.name),
+  );
+  if (!emailColumns.has('sent_by_hand')) {
+    handle.exec('ALTER TABLE emails ADD COLUMN sent_by_hand INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!emailColumns.has('sent_by_hand_by')) {
+    handle.exec('ALTER TABLE emails ADD COLUMN sent_by_hand_by TEXT');
+  }
 }
 
 /** Point the module-wide handle at a specific database. Tests only. */

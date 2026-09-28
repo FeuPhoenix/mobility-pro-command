@@ -617,7 +617,7 @@ export function findEmailByIdempotencyKey(key: string): EmailDraft | null {
 export function insertEmail(e: EmailDraft): void {
   db()
     .prepare(
-      'INSERT INTO emails (id, company_id, rfq_id, kind, company_provider_id, to_json, cc_json, subject, body_text, attachments, content_hash, status, approved_by, approved_at, approved_hash, sent_at, transport_message_id, simulated, failure_reason, idempotency_key, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO emails (id, company_id, rfq_id, kind, company_provider_id, to_json, cc_json, subject, body_text, attachments, content_hash, status, approved_by, approved_at, approved_hash, sent_at, transport_message_id, simulated, sent_by_hand, sent_by_hand_by, failure_reason, idempotency_key, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     )
     .run(
       e.id,
@@ -638,6 +638,8 @@ export function insertEmail(e: EmailDraft): void {
       e.sentAt,
       e.transportMessageId,
       e.simulated ? 1 : 0,
+      e.sentByHand ? 1 : 0,
+      e.sentByHandBy,
       e.failureReason,
       e.idempotencyKey,
       e.createdAt,
@@ -648,7 +650,7 @@ export function insertEmail(e: EmailDraft): void {
 export function updateEmail(e: EmailDraft): void {
   db()
     .prepare(
-      'UPDATE emails SET to_json=?, cc_json=?, subject=?, body_text=?, attachments=?, content_hash=?, status=?, approved_by=?, approved_at=?, approved_hash=?, sent_at=?, transport_message_id=?, simulated=?, failure_reason=?, updated_at=? WHERE id=?',
+      'UPDATE emails SET to_json=?, cc_json=?, subject=?, body_text=?, attachments=?, content_hash=?, status=?, approved_by=?, approved_at=?, approved_hash=?, sent_at=?, transport_message_id=?, simulated=?, sent_by_hand=?, sent_by_hand_by=?, failure_reason=?, updated_at=? WHERE id=?',
     )
     .run(
       JSON.stringify(e.to),
@@ -664,6 +666,8 @@ export function updateEmail(e: EmailDraft): void {
       e.sentAt,
       e.transportMessageId,
       e.simulated ? 1 : 0,
+      e.sentByHand ? 1 : 0,
+      e.sentByHandBy,
       e.failureReason,
       e.updatedAt,
       e.id,
@@ -694,6 +698,8 @@ function rowToEmail(r: Record<string, unknown>): EmailDraft {
     sentAt: str(r.sent_at),
     transportMessageId: str(r.transport_message_id),
     simulated: bool(r.simulated),
+    sentByHand: bool(r.sent_by_hand),
+    sentByHandBy: str(r.sent_by_hand_by),
     failureReason: str(r.failure_reason),
     idempotencyKey: r.idempotency_key as string,
     createdAt: r.created_at as string,

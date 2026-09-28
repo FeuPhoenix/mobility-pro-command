@@ -154,6 +154,39 @@ test.describe('freight workspace', () => {
     await page.screenshot({ path: `${SHOTS}/04-approval-revoked.png`, fullPage: true });
   });
 
+  test('an approved email can be downloaded and sent by hand', async ({ page }) => {
+    // How a pilot runs before Microsoft Graph exists.
+    await loadDemo(page);
+    await openMainRfq(page);
+
+    // A freshly prepared reminder, so this test owns an unapproved email.
+    await page.getByRole('tab', { name: /Providers/ }).click();
+    await page.getByRole('button', { name: 'Prepare reminders' }).click();
+    await page.getByRole('tab', { name: /Emails/ }).click();
+    await page.getByRole('button', { name: /^Reminder —/ }).first().click();
+    await page.getByRole('button', { name: 'Approve', exact: true }).click();
+    await expect(page.getByText('Approved. ')).toBeVisible();
+
+    const panel = page;
+    // The file itself, through the real route.
+    const download = panel.getByRole('link', { name: /Download to send yourself/ });
+    const href = await download.getAttribute('href');
+    const file = await page.request.get(href!);
+    expect(file.status()).toBe(200);
+    expect(file.headers()['content-type']).toContain('message/rfc822');
+    const text = await file.text();
+    expect(text).toContain('X-Unsent: 1');
+    expect(text).not.toMatch(/^From:/m);
+
+    await panel.getByRole('button', { name: /I have sent this myself/ }).click();
+    await page.getByRole('button', { name: /Confirm - I sent it/ }).click();
+    await expect(page.locator('.toast').filter({ hasText: /own mailbox/i })).toBeVisible();
+
+    // It must never read as though the application sent it.
+    await expect(panel.getByText(/by hand, from a person/)).toBeVisible();
+    await page.screenshot({ path: `${SHOTS}/15-sent-by-hand.png`, fullPage: true });
+  });
+
   test('a quotation is reviewed against its source and then compared', async ({ page }) => {
     await loadDemo(page);
     await openMainRfq(page);

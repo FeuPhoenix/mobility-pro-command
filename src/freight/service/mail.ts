@@ -33,6 +33,7 @@ import {
 import {
   applyEdit,
   approve as approveDraft,
+  approvalIsCurrent,
   assertSendable,
   markFailed,
   markSent,
@@ -41,6 +42,7 @@ import {
 } from '../domain/email';
 import { resolveMailTransport, SendFailure } from '../adapters/mail';
 import { readFile, fileExists } from '../files';
+import { toEml, emlFilename } from '../mail/eml';
 
 export function editEmail(
   ctx: Ctx,
@@ -209,6 +211,90 @@ export async function sendEmail(ctx: Ctx, emailId: Id): Promise<SendOutcome> {
     });
     return { email: failed, ok: false, error: message, retryable };
   }
+}
+
+/**
+ * The approved email as a `.eml` file, for a person to send themselves.
+ *
+ * This is how a team runs the workflow before Microsoft Graph exists. It is
+ * the reviewed message: recipients, subject, body and attachments are read
+ * from storage, and the same approval gate applies as for a real send, because
+ * handing someone a file to send is handing them the send.
+ *
+ * Downloading is not sending, and nothing here marks the email sent.
+ */
+export function emailAsEml(ctx: Ctx, emailId: Id): { filename: string; content: string } {
+  assertCanEdit(ctx);
+  assertCanSend(ctx);
+  const email = getEmail(ctx, emailId);
+
+  if (email.approvedHash === null || !approvalIsCurrent(email)) {
+    throw new FreightError(
+      'This email can only be downloaded once it has been approved, and while that approval still matches what it says now.',
+      403,
+      'not_approved',
+    );
+  }
+
+  const attachments = email.attachments.map((a) => {
+    if (!fileExists(a.storageKey)) {
+      throw new FreightError(
+        `The attachment ${a.filename} is no longer stored on this server, so the file would go out incomplete.`,
+        409,
+        'attachment_missing',
+      );
+    }
+    return { filename: a.filename, contentType: a.contentType, content: readFile(a.storageKey) };
+  });
+
+  audit(ctx, {
+    companyId: email.companyId,
+    action: 'email.downloaded',
+    subject: `email:${email.id}`,
+    summary: `Downloaded the ${kindLabel(email)} to ${email.to.map((t) => t.email).join(', ')} to send by hand. Nothing has been sent yet.`,
+  });
+
+  return { filename: emlFilename(email.subject), content: toEml(email, attachments) };
+}
+
+/**
+ * Records that a person sent the approved email from their own mailbox.
+ *
+ * The approval gate is the same one a real send passes, so an edited or
+ * unapproved email cannot be marked sent. What it must never do is look like
+ * this application sent it: `sentByHand` keeps that distinction, and the
+ * record names the person who says they did.
+ */
+export function markSentByHand(ctx: Ctx, emailId: Id): SendOutcome {
+  assertCanEdit(ctx);
+  assertCanSend(ctx);
+  const email = getEmail(ctx, emailId);
+  assertSendable(email);
+
+  const at = now();
+  const sent: EmailDraft = {
+    ...email,
+    status: 'sent',
+    sentAt: at,
+    // No transport touched it, so there is no transport id to claim.
+    transportMessageId: null,
+    simulated: false,
+    sentByHand: true,
+    sentByHandBy: ctx.user.id,
+    failureReason: null,
+    updatedAt: at,
+  };
+  updateEmail(sent);
+  afterSend(ctx, sent);
+
+  audit(ctx, {
+    companyId: email.companyId,
+    action: 'email.sent_by_hand',
+    subject: `email:${email.id}`,
+    summary: `${ctx.user.name} recorded sending the ${kindLabel(email)} to ${email.to.map((t) => t.email).join(', ')} from their own mailbox. This application did not send it.`,
+  });
+
+  return { email: sent, ok: true, error: null, retryable: false };
 }
 
 /** Moves the RFQ and recipient state along after a successful send. */

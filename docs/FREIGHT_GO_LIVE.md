@@ -28,6 +28,12 @@ Ask these first; several steps below wait on them. Each has a working default.
 
 ## B. Microsoft 365 email (W1 + W2)
 
+> **A pilot does not have to wait for this.** An approved email can be
+> downloaded as a `.eml` file, sent from the person's own Outlook and recorded
+> as sent by hand; replies come back in through **Load .eml files**. The whole
+> workflow runs, with two manual steps, and nothing pretends the application
+> sent anything. Do this section to remove those two steps.
+
 **Who:** a Microsoft 365 administrator, then whoever runs the server.
 **How:** `docs/FREIGHT_W2_LIVE_TEST.md`, step by step.
 

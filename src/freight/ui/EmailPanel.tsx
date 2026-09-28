@@ -79,7 +79,13 @@ export function EmailPanel({
         title={`${kindTitle(email.kind)} to ${providerLabel}`}
         hint={
           sent
-            ? `Sent ${formatWhen(email.sentAt ?? email.updatedAt)}${email.simulated ? ' (simulated - nothing was transmitted)' : ''}.`
+            ? `Sent ${formatWhen(email.sentAt ?? email.updatedAt)}${
+                email.simulated
+                  ? ' (simulated - nothing was transmitted)'
+                  : email.sentByHand
+                    ? ' by hand, from a person’s own mailbox'
+                    : ''
+              }.`
             : 'This is exactly what will be sent. Approval is bound to this content.'
         }
         right={<EmailStatusPill status={email.status} simulated={email.simulated} />}
@@ -237,6 +243,25 @@ export function EmailPanel({
                   />
                 ) : null}
 
+                {approved || email.status === 'failed' ? (
+                  <>
+                    {/*
+                      The workflow runs without Microsoft Graph this way: send
+                      the approved message from your own mailbox, then say so.
+                    */}
+                    <a className="btn" href={`/api/freight/email/${email.id}/eml`} download>
+                      Download to send yourself
+                    </a>
+                    <ConfirmButton
+                      className="btn"
+                      label="I have sent this myself"
+                      confirmLabel="Confirm - I sent it from my mailbox"
+                      disabled={busy}
+                      onConfirm={() => act('email.markSentByHand')}
+                    />
+                  </>
+                ) : null}
+
                 {!isManager && (email.status === 'awaiting_approval' || stale) ? (
                   <span className="small muted">
                     Waiting for the Logistics Operations Manager to approve this.
@@ -246,6 +271,13 @@ export function EmailPanel({
             )}
           </div>
         </div>
+
+        {email.sentByHand ? (
+          <p className="fr-foot-note">
+            Recorded as sent by hand{email.sentAt ? ` on ${formatWhen(email.sentAt)}` : ''}. This
+            application did not send it; someone sent the approved message from their own mailbox.
+          </p>
+        ) : null}
 
         {!sent && !state?.integrations?.mail.connected ? (
           <p className="fr-foot-note">

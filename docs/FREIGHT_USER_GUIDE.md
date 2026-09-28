@@ -58,6 +58,18 @@ manager to add you on **Settings → People**.
   approval is withdrawn automatically and it needs approving again.
 - Then **Send**.
 
+**Sending it yourself.** Until the freight mailbox is connected, an approved
+email can go out from your own Outlook instead:
+
+1. **Download to send yourself** — the file opens in Outlook as a draft, with
+   the recipients, subject, body and attachments exactly as approved.
+2. Send it from your mailbox.
+3. **I have sent this myself** — this records it, so chasing and the rest of
+   the request work normally.
+
+The record says a person sent it and names them. It never claims the
+application did.
+
 ## 5. Replies — Replies
 
 - Replies are collected from the freight mailbox automatically (or press

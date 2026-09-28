@@ -38,8 +38,8 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 369 unit tests, 9 skipped without a live ERPNext
-npm run test:e2e         # 25 browser tests + 4 skipped, needs a build first
+npm test                 # 394 unit tests, 9 skipped without a live ERPNext
+npm run test:e2e         # 26 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```
 
@@ -75,7 +75,10 @@ test.**
    deliberate exception, and run as system identities. `AUTH_MODE=demo` is the
    picker and is a demonstration control only.
 9. **A charge the reader cannot place is shown to a person**, never dropped.
-10. **Only checked quotations reach ERPNext**, and each revision is its own
+10. **An email sent by a person is recorded as theirs.** Downloading the file
+    passes the same approval gate as sending, and nothing claims this
+    application sent what someone sent from their own mailbox.
+11. **Only checked quotations reach ERPNext**, and each revision is its own
     record. A missing charge is sent as null — but Frappe stores a Float as 0
     regardless, so `amount_missing` and `unstated_numbers` carry the
     difference. Their reports must read those, and `docs/FREIGHT_ERPNEXT.md`
@@ -93,8 +96,10 @@ test.**
 - **Authentication**, three modes: `demo` (the picker), `password` (scrypt,
   revocable sessions, throttling, first-run setup), `entra` (Sign in with
   Microsoft, plus a People screen for managing access).
-- **`.eml` reading** — real provider quotations can be loaded through the same
-  pipeline as live mail, before any mailbox is connected.
+- **`.eml` reading and writing** — real provider quotations can be loaded
+  through the same pipeline as live mail, and an approved email can be
+  downloaded and sent from a person's own Outlook, then recorded. **A pilot can
+  therefore run end to end with no Microsoft 365 credentials at all.**
 - **ERPNext raw-quotation destination** — the one the customer chose.
 - **Start an RFQ by email** (W5), off by default.
 - **Import a filled-in shipping requirement template** on *Requests → New*; it
@@ -189,6 +194,10 @@ Four things only the real instance found, all now fixed:
 a Frappe-shaped server, for when no instance is at hand.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
+
+Not a blocker for starting a pilot any more: approved email can be downloaded
+and sent by hand, and replies loaded as `.eml`. Graph turns that into
+automation, it is no longer the gate.
 
 Never run against a real tenant. Needs an Entra app registration with
 `Mail.Send`, admin consent, and an ApplicationAccessPolicy scoping it to the one

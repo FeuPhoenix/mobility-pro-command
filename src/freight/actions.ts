@@ -30,7 +30,15 @@ import {
   reopenRfq,
   setRecipients,
 } from './service/rfq';
-import { approveEmail, editEmail, requestApproval, sendApproved, sendEmail, unapproveEmail } from './service/mail';
+import {
+  approveEmail,
+  editEmail,
+  markSentByHand,
+  requestApproval,
+  sendApproved,
+  sendEmail,
+  unapproveEmail,
+} from './service/mail';
 import { assignMessage, ingestMessage, markDeclined, reviewQuote } from './service/inbox';
 import { createComparison, prepareComparisonEmail } from './service/compare';
 import { queueSync, runSync } from './service/erp';
@@ -114,6 +122,7 @@ export const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('email.approve'), emailId: z.string() }),
   z.object({ type: z.literal('email.unapprove'), emailId: z.string() }),
   z.object({ type: z.literal('email.send'), emailId: z.string() }),
+  z.object({ type: z.literal('email.markSentByHand'), emailId: z.string() }),
   z.object({ type: z.literal('email.sendBatch'), rfqId: z.string(), emailIds: z.array(z.string()).min(1) }),
 
   z.object({ type: z.literal('inbox.assign'), messageId: z.string(), rfqId: z.string(), companyProviderId: z.string() }),
@@ -387,6 +396,15 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
         ok: true,
         message: result.email.simulated ? 'Sent (simulated - nothing left this machine).' : 'Sent.',
         data: result.email,
+      };
+    }
+
+    case 'email.markSentByHand': {
+      const outcome = markSentByHand(ctx, action.emailId);
+      return {
+        ok: true,
+        message: 'Recorded as sent from your own mailbox. This application did not send it.',
+        data: outcome.email,
       };
     }
 

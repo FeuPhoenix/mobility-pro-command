@@ -339,6 +339,16 @@ export interface EmailDraft {
   transportMessageId: string | null;
   /** True when the transport was the simulated adapter. Surfaced in the UI. */
   simulated: boolean;
+  /**
+   * True when a person sent this from their own mailbox and said so.
+   *
+   * Kept apart from `simulated` deliberately: this email really was sent, but
+   * not by this application, and neither the screens nor the record may
+   * suggest otherwise.
+   */
+  sentByHand: boolean;
+  /** Who said they sent it, when `sentByHand`. */
+  sentByHandBy: Id | null;
   failureReason: string | null;
   /** Guards against a double click or a retry sending the same email twice. */
   idempotencyKey: string;

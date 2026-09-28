@@ -194,6 +194,8 @@ export function prepareComparisonEmail(ctx: Ctx, comparisonId: Id): EmailDraft {
     sentAt: null,
     transportMessageId: null,
     simulated: true,
+    sentByHand: false,
+    sentByHandBy: null,
     failureReason: null,
     idempotencyKey: `comparison:${comparison.id}`,
     createdAt: at,

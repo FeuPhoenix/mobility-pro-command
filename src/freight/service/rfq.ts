@@ -388,6 +388,8 @@ export function prepareRfqEmails(ctx: Ctx, rfqId: Id): EmailDraft[] {
       sentAt: null,
       transportMessageId: null,
       simulated: true,
+    sentByHand: false,
+    sentByHandBy: null,
       failureReason: null,
       // Stable per RFQ and provider, so preparing twice cannot create two sends.
       idempotencyKey: `rfq:${rfq.id}:${r.companyProviderId}`,
@@ -460,6 +462,8 @@ export function prepareReminders(ctx: Ctx, rfqId: Id, linkIds: Id[]): EmailDraft
       sentAt: null,
       transportMessageId: null,
       simulated: true,
+    sentByHand: false,
+    sentByHandBy: null,
       failureReason: null,
       idempotencyKey: `reminder:${rfq.id}:${linkId}:${round}`,
       createdAt: at,
