@@ -61,7 +61,18 @@ export function parentDoctype({ module, supplierLink }) {
     title_field: 'rfq_reference',
     search_fields: 'rfq_reference,recommended_provider',
     fields: [
-      { fieldname: 'freight_idempotency_key', label: 'Idempotency key', fieldtype: 'Data', unique: 1, read_only: 1, hidden: 1, reqd: 1 },
+      {
+        // Not hidden: Frappe refuses a DocType whose field is hidden and
+        // mandatory without a default, so this definition could never be
+        // created on a real instance. Read-only keeps it out of a person's way
+        // without making the DocType invalid. Found against ERPNext 15.121.4.
+        fieldname: 'freight_idempotency_key',
+        label: 'Integration key',
+        fieldtype: 'Data',
+        unique: 1,
+        read_only: 1,
+        reqd: 1,
+      },
       { fieldname: 'rfq_reference', label: 'RFQ reference', fieldtype: 'Data', in_list_view: 1, in_standard_filter: 1, reqd: 1 },
       { fieldname: 'company', label: 'Company', fieldtype: 'Link', options: 'Company', in_standard_filter: 1, reqd: 1 },
       { fieldname: 'comparison_date', label: 'Comparison date', fieldtype: 'Date', in_list_view: 1 },

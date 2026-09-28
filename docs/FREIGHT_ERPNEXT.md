@@ -97,6 +97,15 @@ per_tonne / unknown), `confidence`, `source_reference`.
 
 ## 2. `Freight Comparison` — the decision record, still available
 
+> **Verified against a real instance on 28 September** (ERPNext 15.121.4), and
+> it did not work until then: `freight_idempotency_key` was defined as hidden
+> *and* mandatory without a default, which Frappe refuses outright — the DocType
+> could never have been created. It is read-only rather than hidden now.
+>
+> One thing for their reports here too: an offer nobody could compare has 0 in
+> its totals, because Frappe cannot store an empty number. **`comparable = 0`
+> is what says so** — never read those zeroes as a price.
+
 ### The problem it solves
 
 ERPNext has no native document for "we asked five freight providers for a rate,

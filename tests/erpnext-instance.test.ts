@@ -230,3 +230,89 @@ describe.skipIf(!configured)('against a real ERPNext instance', () => {
     expect((await readBack(v1.remoteName)).freight_idempotency_key).toBe(`${KEY_PREFIX}-v1`);
   });
 });
+
+/* --------------------- The comparison destination, live ------------------------ */
+
+const COMPARISON_DOCTYPE = process.env.ERPNEXT_LIVE_DOCTYPE ?? 'Freight Comparison';
+
+const comparisonErp = () =>
+  new LiveErp({
+    baseUrl: BASE,
+    apiKey: KEY,
+    apiSecret: SECRET,
+    doctype: COMPARISON_DOCTYPE,
+    quotationDoctype: '',
+    companyMap: {} as Record<string, string>,
+  });
+
+/** One offer that is fully quoted, and one nobody could compare. */
+const comparisonInput = (key: string) =>
+  ({
+    idempotencyKey: key,
+    company,
+    rfq,
+    comparison: {
+      lines: [
+        {
+          quoteId: 'q1', companyProviderId: 'cp1', providerName: 'Nile Star Logistics', version: 1,
+          comparable: true, totalInQuoteCurrency: 11799, quoteCurrency: 'USD', totalInBaseCurrency: 11799,
+          transitDays: 35, freeDays: 7, validUntil: '2099-12-31', rank: 1, scoreTotal: 74,
+        },
+        {
+          // Nothing could be compared here: the figures were never stated.
+          quoteId: 'q2', companyProviderId: 'cp2', providerName: 'Levant Maritime Services', version: 1,
+          comparable: false, totalInQuoteCurrency: null, quoteCurrency: 'USD', totalInBaseCurrency: null,
+          transitDays: null, freeDays: null, validUntil: null, rank: null, scoreTotal: null,
+        },
+      ],
+      recommendedQuoteId: 'q1',
+      cheapestQuoteId: 'q1',
+      criteria: { baseCurrency: 'USD', weightCost: 60, weightTransit: 25, weightFreeDays: 15 },
+      recommendationReasons: ['the only comparable offer'],
+      recommendationTradeoffs: [],
+      blockedNotes: ['Levant Maritime Services did not state a total.'],
+      fxRates: [],
+    },
+    providerNames: { cp1: 'Nile Star Logistics', cp2: 'Levant Maritime Services' },
+    comparisonDate: '2026-09-28',
+  }) as never;
+
+describe.skipIf(!configured)('the comparison destination, against a real instance', () => {
+  it('writes a comparison and reads it back', async () => {
+    const key = `${KEY_PREFIX}-cmp`;
+    const result = await comparisonErp().record(comparisonInput(key));
+
+    expect(result.simulated).toBe(false);
+    const res = await fetch(
+      `${BASE}/api/resource/${encodeURIComponent(COMPARISON_DOCTYPE)}/${encodeURIComponent(result.remoteName)}`,
+      { headers },
+    );
+    expect(res.ok, `reading ${result.remoteName} back returned ${res.status}`).toBe(true);
+
+    const doc = (await res.json()).data as {
+      freight_idempotency_key: string;
+      offers: { provider: string; comparable: number; total_base_currency: number; transit_days: number }[];
+    };
+    expect(doc.freight_idempotency_key).toBe(key);
+    expect(doc.offers).toHaveLength(2);
+
+    // The same trap as the quotations: Frappe stores an unset number as 0, so
+    // an offer nobody could compare must be readable as such from `comparable`,
+    // never from its totals looking like zero.
+    const blocked = doc.offers.find((o) => o.provider === 'Levant Maritime Services');
+    expect(blocked?.comparable).toBe(0);
+    // Its totals read as 0 because Frappe cannot store an empty number; it is
+    // `comparable`, not the figures, that says nobody could rank this offer.
+    expect(blocked?.total_base_currency).toBe(0);
+    expect(doc.offers.find((o) => o.provider === 'Nile Star Logistics')?.comparable).toBe(1);
+  });
+
+  it('updates on a retry instead of writing a second comparison', async () => {
+    const key = `${KEY_PREFIX}-cmp-retry`;
+    const first = await comparisonErp().record(comparisonInput(key));
+    const again = await comparisonErp().record(comparisonInput(key));
+
+    expect(again.updatedExisting).toBe(true);
+    expect(again.remoteName).toBe(first.remoteName);
+  });
+});

@@ -160,7 +160,8 @@ quotations as `live` (not simulated), and a repeated sync writing nothing new. `
 theirs once the DocType exists; it is the fastest way to know the integration
 holds.
 
-Three things only the real instance found, all now fixed:
+Both destinations have now been verified this way, quotations and comparison.
+Four things only the real instance found, all now fixed:
 
 - **Frappe cannot store an empty number.** Our carefully sent `null` became
   `0.00`. Hence `amount_missing` and `unstated_numbers`.
@@ -169,6 +170,9 @@ Three things only the real instance found, all now fixed:
   write that then fails on every retry. Names now end in a hash of the key.
 - **The module must exist first.** Stock ERPNext has no `Freight` module, and
   Frappe's error is a bare `LinkValidationError`. The script creates it.
+- **The comparison DocType could never be created at all.** Its key field was
+  hidden *and* mandatory without a default, which Frappe refuses. Nobody had
+  ever run that script against a real instance.
 
 `tests/erpnext-live-quotation.test.ts` remains the offline contract test against
 a Frappe-shaped server, for when no instance is at hand.
