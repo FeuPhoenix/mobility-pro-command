@@ -35,7 +35,18 @@ export type UserRole =
    * into the workspace on a schedule. It is never stored as a user row, so it
    * cannot be picked as the acting person, and it may not edit, approve or send.
    */
-  | 'system_mailbox_collector';
+  | 'system_mailbox_collector'
+  /**
+   * Not a person. Closes collection when a response deadline passes, when the
+   * "close at the deadline" setting is on. Never a user row; cannot edit,
+   * approve or send.
+   */
+  | 'system_deadline';
+
+/** System identities act on their own schedule and are never a signed-in person. */
+export function isSystemRole(role: UserRole): boolean {
+  return role === 'system_mailbox_collector' || role === 'system_deadline';
+}
 
 export interface User {
   id: Id;

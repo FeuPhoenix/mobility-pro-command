@@ -25,6 +25,7 @@ import { CollectFailure, resolveMailbox, type MailboxSource } from '../adapters/
 import { mailboxCollectorCtx } from '../system';
 import { ingestMessage } from './inbox';
 import { ingestRfqRequest, isRfqRequest } from './intake';
+import { closeRfqsAtDeadline } from './rfq';
 
 export type CollectTrigger = 'schedule' | 'manual' | 'external';
 
@@ -48,6 +49,8 @@ export interface CollectionRun {
   needsReview: number;
   /** Colleagues' emailed shipping requirements (RFQ_EMAIL_INTAKE=on). */
   rfqRequests: number;
+  /** RFQs closed because their deadline passed (setting "close at the deadline"). */
+  closedAtDeadline?: string[];
   /** Messages set aside after repeated failures. */
   quarantined: { externalId: string; from: string; subject: string; error: string }[];
   /** Things the mailbox could not bring across, e.g. linked attachments. */
@@ -156,6 +159,13 @@ export async function collectInbox(
     run.error = err instanceof Error ? err.message : 'Collection failed.';
     if (!(err instanceof CollectFailure)) console.error('[freight/collect]', err);
   } finally {
+    // After collecting, so a reply that arrived before the deadline is filed
+    // before its RFQ closes. Does nothing unless the setting is on.
+    try {
+      run.closedAtDeadline = closeRfqsAtDeadline();
+    } catch (err) {
+      console.error('[freight/collect] closing at deadline', err);
+    }
     run.finishedAt = now();
     setSetting(LAST_RUN_KEY, run);
     recordRun(run);

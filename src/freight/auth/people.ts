@@ -13,6 +13,7 @@
  */
 
 import type { Id, User, UserRole } from '../types';
+import { isSystemRole } from '../types';
 import {
   assertCompanyAccess,
   audit,
@@ -36,6 +37,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   logistics_coordinator: 'Logistics Coordinator',
   viewer: 'Viewer (read-only)',
   system_mailbox_collector: 'System',
+  system_deadline: 'System',
 };
 
 /* --------------------------------- Sign-in ----------------------------------- */
@@ -102,7 +104,7 @@ export function personForSignIn(claims: IdClaims, bootstrapAdminEmail: string | 
 /** The person behind a session, if they may still act. */
 export function personForSession(userId: string): User | null {
   const person = getUser(userId);
-  if (!person || person.disabled || person.role === 'system_mailbox_collector') return null;
+  if (!person || person.disabled || isSystemRole(person.role)) return null;
   return person;
 }
 

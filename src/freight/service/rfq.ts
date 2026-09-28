@@ -44,6 +44,9 @@ import {
   type Ctx,
 } from '../repo';
 import { contentHash, rfqBody, rfqSubject, reminderBody, reminderSubject } from '../domain/email';
+import { getSetting } from '../db';
+import { listRfqsPastDeadline } from '../repo';
+import { deadlineCtx } from '../system';
 
 export interface RfqInput {
   companyId: Id;
@@ -520,6 +523,65 @@ export function closeRfq(ctx: Ctx, rfqId: Id): Rfq {
     summary: `Closed response collection on ${rfq.reference}.`,
   });
   return next;
+}
+
+/* ------------------------- Optional automation (settings) ------------------------ */
+
+/**
+ * Two small choices the handover left to the customer, each off by default:
+ * pre-selecting providers that serve the lane, and closing collection when the
+ * deadline passes. Neither sends anything or approves anything.
+ */
+export const PRESELECT_LANE_KEY = 'recipients.preselectLane';
+export const CLOSE_AT_DEADLINE_KEY = 'collection.closeAtDeadline';
+
+/**
+ * With the setting on, a new RFQ starts with every contactable provider that
+ * serves its lane already selected. A manager still reviews the list, and
+ * restricted providers are never included: `setRecipients` applies the same
+ * rules as a hand-made selection.
+ */
+export function preselectLaneProviders(ctx: Ctx, rfqId: Id): number {
+  if (!getSetting<boolean>(PRESELECT_LANE_KEY, false)) return 0;
+  const picks = recipientOptions(ctx, rfqId)
+    .filter((o) => o.contactable && o.servesLane)
+    .map((o) => o.linkId);
+  if (picks.length === 0) return 0;
+  setRecipients(ctx, rfqId, picks);
+  const rfq = getRfq(ctx, rfqId);
+  audit(ctx, {
+    companyId: rfq.companyId,
+    action: 'rfq.recipients_preselected',
+    subject: `rfq:${rfq.id}`,
+    summary: `Pre-selected ${picks.length} provider${picks.length === 1 ? '' : 's'} serving ${rfq.originPort} to ${rfq.destinationPort}. Review the list before preparing email.`,
+  });
+  return picks.length;
+}
+
+/**
+ * With the setting on, closes collection on every RFQ whose response deadline
+ * has passed, as the "Response deadline (automatic)" identity. Replies that
+ * arrive later are still filed, exactly as after a manual close; a manager can
+ * reopen the RFQ as usual. Returns the references closed.
+ */
+export function closeRfqsAtDeadline(at: string = now()): string[] {
+  if (!getSetting<boolean>(CLOSE_AT_DEADLINE_KEY, false)) return [];
+  const ctx = deadlineCtx();
+  const closed: string[] = [];
+  for (const rfq of listRfqsPastDeadline(at)) {
+    updateRfq({ ...rfq, status: 'closed', closedAt: at, closedBy: ctx.user.id });
+    for (const r of listRecipients(rfq.id)) {
+      if (r.status === 'sent') updateRecipient({ ...r, status: 'no_response' });
+    }
+    audit(ctx, {
+      companyId: rfq.companyId,
+      action: 'rfq.closed',
+      subject: `rfq:${rfq.id}`,
+      summary: `Closed response collection on ${rfq.reference} because its deadline passed. A manager can reopen it.`,
+    });
+    closed.push(rfq.reference);
+  }
+  return closed;
 }
 
 export function reopenRfq(ctx: Ctx, rfqId: Id): Rfq {

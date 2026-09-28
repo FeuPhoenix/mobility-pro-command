@@ -76,6 +76,8 @@ export async function GET(request: Request) {
       fxRates: getSetting('fx.rates', []),
       remindersAfterDays: getSetting('reminders.afterDays', 3),
       remindersMaxRounds: getSetting('reminders.maxRounds', 2),
+      preselectLane: getSetting('recipients.preselectLane', false),
+      closeAtDeadline: getSetting('collection.closeAtDeadline', false),
     },
   });
 }

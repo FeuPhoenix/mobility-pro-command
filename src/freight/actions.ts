@@ -23,6 +23,9 @@ import {
   createRfq,
   prepareReminders,
   prepareRfqEmails,
+  preselectLaneProviders,
+  CLOSE_AT_DEADLINE_KEY,
+  PRESELECT_LANE_KEY,
   recipientOptions,
   reopenRfq,
   setRecipients,
@@ -178,6 +181,7 @@ export const ActionSchema = z.discriminatedUnion('type', [
     asOf: z.string(),
   })) }),
   z.object({ type: z.literal('settings.reminders'), afterDays: z.number().int().min(1).max(30), maxRounds: z.number().int().min(0).max(5) }),
+  z.object({ type: z.literal('settings.automation'), preselectLane: z.boolean(), closeAtDeadline: z.boolean() }),
 
   z.object({ type: z.literal('mailbox.collect') }),
 
@@ -288,7 +292,14 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
         instructions: action.instructions,
         requestedCurrency: action.requestedCurrency,
       });
-      return { ok: true, message: `Created ${rfq.reference}.`, data: rfq };
+      const preselected = preselectLaneProviders(ctx, rfq.id);
+      return {
+        ok: true,
+        message: preselected > 0
+          ? `Created ${rfq.reference} with ${preselected} provider${preselected === 1 ? '' : 's'} serving the lane pre-selected. Review the list before preparing email.`
+          : `Created ${rfq.reference}.`,
+        data: rfq,
+      };
     }
 
     case 'rfq.setRecipients': {
@@ -456,6 +467,15 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
     case 'settings.fxRates': {
       setSetting('fx.rates', action.rates);
       return { ok: true, message: 'Exchange rates saved.' };
+    }
+
+    case 'settings.automation': {
+      if (ctx.user.role !== 'logistics_manager') {
+        throw new FreightError('Only the Logistics Operations Manager can change how requests are automated.', 403, 'forbidden');
+      }
+      setSetting(PRESELECT_LANE_KEY, action.preselectLane);
+      setSetting(CLOSE_AT_DEADLINE_KEY, action.closeAtDeadline);
+      return { ok: true, message: 'Automation settings saved.' };
     }
 
     case 'settings.reminders': {

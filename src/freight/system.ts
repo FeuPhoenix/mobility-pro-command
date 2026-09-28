@@ -20,6 +20,26 @@ import { listAllCompanyIds, type Ctx } from './repo';
 export const MAILBOX_COLLECTOR_ID = 'system_mailbox_collector';
 export const MAILBOX_COLLECTOR_NAME = 'Mailbox Collector';
 
+export const DEADLINE_ID = 'system_deadline';
+export const DEADLINE_NAME = 'Response deadline (automatic)';
+
+/**
+ * Closes collection when a deadline passes, if that setting is on. Like the
+ * collector it reaches every company and can do nothing else.
+ */
+export function deadlineCtx(): Ctx {
+  return {
+    user: {
+      id: DEADLINE_ID,
+      name: DEADLINE_NAME,
+      title: 'System account - closes collection at the response deadline',
+      email: 'deadline@system.invalid',
+      role: 'system_deadline',
+      companyIds: listAllCompanyIds(),
+    },
+  };
+}
+
 /** Built fresh for each run, so a company added since the last run is covered. */
 export function mailboxCollectorCtx(): Ctx {
   return {

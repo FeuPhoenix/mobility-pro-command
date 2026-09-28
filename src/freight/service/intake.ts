@@ -10,8 +10,9 @@
  * ----------------------------
  * - It creates DRAFT RFQs only, in the sender's name and within the sender's
  *   companies, through the same `createRfq` and validation as the form.
- * - It never selects providers, prepares email or sends anything. Choosing who
- *   is asked, and approving what they are sent, stay with a person.
+ * - It never prepares email or sends anything. Providers are chosen by a
+ *   person, unless the "pre-select providers serving the lane" setting is on,
+ *   and even then a person reviews the list and approves every email.
  * - A request it cannot read in full creates nothing. It is kept, with every
  *   problem in plain language, on the Replies screen for a person to act on.
  * - The same email collected twice is recognised by its message id.
@@ -21,6 +22,7 @@
  */
 
 import type { Company, Incoterm, RfqRequest } from '../types';
+import { isSystemRole } from '../types';
 import {
   assertCanEdit,
   audit,
@@ -39,7 +41,7 @@ import {
 import { findReference } from '../domain/matching';
 import { readCells, UnreadableFile } from '../parsers/excel';
 import { looksLikeRfqTemplate, parseRequestSheet, parseRequestText, type ParsedRequest } from '../parsers/rfqRequest';
-import { createRfq, validateRfqInput } from './rfq';
+import { createRfq, preselectLaneProviders, validateRfqInput } from './rfq';
 import type { IncomingMail } from './inbox';
 
 export function intakeEnabled(): boolean {
@@ -58,7 +60,7 @@ export function isRfqRequest(mail: IncomingMail): boolean {
   if (!SUBJECT.test(mail.subject) || /^\s*re\s*:/i.test(mail.subject)) return false;
   if (findReference(mail.subject)) return false;
   const person = findUserByEmail(mail.fromEmail);
-  return Boolean(person && !person.disabled && person.role !== 'system_mailbox_collector');
+  return Boolean(person && !person.disabled && !isSystemRole(person.role));
 }
 
 async function parse(mail: IncomingMail): Promise<ParsedRequest> {
@@ -134,7 +136,11 @@ export async function ingestRfqRequest(mail: IncomingMail): Promise<RfqRequest> 
   // All the drafts from one email, and the record of it, land together or not at all.
   return tx(() => {
     if (problems.length === 0) {
-      for (const input of inputs) request.rfqIds.push(createRfq(ctx, input).id);
+      for (const input of inputs) {
+        const rfq = createRfq(ctx, input);
+        preselectLaneProviders(ctx, rfq.id);
+        request.rfqIds.push(rfq.id);
+      }
     }
     insertRfqRequest(request);
     audit(ctx, {
@@ -143,7 +149,7 @@ export async function ingestRfqRequest(mail: IncomingMail): Promise<RfqRequest> 
       subject: `rfq-request:${request.id}`,
       summary:
         problems.length === 0
-          ? `${person.name} emailed a shipping requirement; ${request.rfqIds.length} draft RFQ${request.rfqIds.length === 1 ? ' was' : 's were'} created. Providers have not been chosen and nothing has been sent.`
+          ? `${person.name} emailed a shipping requirement; ${request.rfqIds.length} draft RFQ${request.rfqIds.length === 1 ? ' was' : 's were'} created. Nothing has been sent.`
           : `${person.name} emailed a shipping requirement that could not be read in full, so no RFQ was created: ${problems.join(' ')}`,
     });
     return request;

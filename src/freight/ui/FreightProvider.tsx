@@ -55,6 +55,8 @@ export interface FreightState {
     fxRates: FxRate[];
     remindersAfterDays: number;
     remindersMaxRounds: number;
+    preselectLane?: boolean;
+    closeAtDeadline?: boolean;
   } | null;
 }
 

@@ -17,6 +17,7 @@
 
 import { cookies } from 'next/headers';
 import { getUser, listUsers, FreightError, type Ctx } from './repo';
+import { isSystemRole } from './types';
 import { authMode, entraConfig, SESSION_COOKIE } from './auth/config';
 import { verifyToken } from './auth/token';
 import { personForSession } from './auth/people';
@@ -59,7 +60,7 @@ export async function resolveCtx(): Promise<Ctx> {
   if (id) {
     const user = getUser(id);
     // A system identity is never a person a request can act as.
-    if (user && user.role !== 'system_mailbox_collector' && !user.disabled) return { user };
+    if (user && !isSystemRole(user.role) && !user.disabled) return { user };
   }
 
   const all = listUsers().filter((u) => !u.disabled);

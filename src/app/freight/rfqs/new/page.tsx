@@ -3,10 +3,10 @@
 /**
  * Capturing a shipping requirement.
  *
- * The form is the working path. The Excel template is offered next to it
- * because the customer has not confirmed whether requirements will arrive as a
- * form, a spreadsheet or an email - so neither is assumed, and email intake is
- * left as an extension point rather than a half-built feature.
+ * The form is the working path. The Excel template sits next to it: download
+ * it, fill it in, and import it back - the import only fills this form, so a
+ * spreadsheet is checked by a person and validated exactly like typed input.
+ * Email intake (RFQ_EMAIL_INTAKE) reads the same template.
  */
 
 import React from 'react';
@@ -15,12 +15,20 @@ import { Card, CardHead, Field, Notice } from '@/components/ui';
 import { useFreight } from '@/freight/ui/FreightProvider';
 import { CONTAINER_TYPES, INCOTERMS, type ContainerType, type Incoterm } from '@/freight/types';
 import type { Rfq } from '@/freight/types';
+import type { RequestedRfq } from '@/freight/parsers/rfqRequest';
 
 interface Line {
   type: ContainerType;
   quantity: number;
   grossWeightKg: string;
   commodity: string;
+}
+
+/** An ISO instant as the value a datetime-local input expects, in local time. */
+function localDateTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function isoDay(offset: number): string {
@@ -30,7 +38,7 @@ function isoDay(offset: number): string {
 }
 
 export default function NewRfqPage() {
-  const { state, run, busy, companyId } = useFreight();
+  const { state, run, busy, companyId, notify } = useFreight();
   const router = useRouter();
 
   const companies = state?.companies ?? [];
@@ -54,6 +62,47 @@ export default function NewRfqPage() {
   React.useEffect(() => {
     if (!company && companies.length === 1) setCompany(companies[0].id);
   }, [companies, company]);
+
+  const [imported, setImported] = React.useState<RequestedRfq[]>([]);
+  const [importProblems, setImportProblems] = React.useState<string[]>([]);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+
+  function load(r: RequestedRfq) {
+    setTitle(r.title);
+    setOrigin(r.originPort);
+    setDestination(r.destinationPort);
+    if ((INCOTERMS as string[]).includes(r.incoterm)) setIncoterm(r.incoterm as Incoterm);
+    setCurrency(r.requestedCurrency);
+    setFrom(r.targetShipFrom);
+    setTo(r.targetShipTo);
+    setDeadline(localDateTime(r.responseDeadline));
+    setCargoNotes(r.cargoNotes ?? '');
+    if (r.instructions) setInstructions(r.instructions);
+    setLines(
+      r.containers.map((c) => ({
+        type: ((CONTAINER_TYPES as string[]).includes(c.type) ? c.type : '40HC') as ContainerType,
+        quantity: c.quantity,
+        grossWeightKg: c.grossWeightKg === null ? '' : String(c.grossWeightKg),
+        commodity: c.commodity,
+      })),
+    );
+    notify('info', `Loaded "${r.title}" from the spreadsheet. Check it, then create the RFQ.`);
+  }
+
+  async function importFile(file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/freight/import-rfq', { method: 'POST', body: form });
+    const payload = (await res.json()) as { ok?: boolean; error?: string; requests?: RequestedRfq[]; problems?: string[] };
+    if (fileRef.current) fileRef.current.value = '';
+    if (!res.ok || !payload.ok) {
+      notify('bad', payload.error ?? 'That file could not be read.');
+      return;
+    }
+    setImportProblems(payload.problems ?? []);
+    setImported(payload.requests ?? []);
+    if (payload.requests?.length === 1) load(payload.requests[0]);
+  }
 
   const setLine = (i: number, patch: Partial<Line>) =>
     setLines((ls) => ls.map((l, n) => (n === i ? { ...l, ...patch } : l)));
@@ -109,8 +158,44 @@ export default function NewRfqPage() {
           <a className="btn" href="/api/freight/template/rfq">
             Prefer a spreadsheet?
           </a>
+          <label className="btn">
+            Import a filled-in template
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.csv"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importFile(f);
+              }}
+            />
+          </label>
         </div>
       </div>
+
+      {importProblems.length > 0 ? (
+        <Notice tone="warn" title="The spreadsheet could not be read in full. ">
+          Nothing was loaded. Fix these in the file and import it again:
+          <ul style={{ paddingLeft: 18, marginTop: 4 }}>
+            {importProblems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </Notice>
+      ) : null}
+      {imported.length > 1 ? (
+        <Notice tone="info" title={`The spreadsheet holds ${imported.length} requirements. `}>
+          Load one, create it, then load the next.
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+            {imported.map((r, i) => (
+              <button key={i} type="button" className="btn sm" onClick={() => load(r)}>
+                {r.title}
+              </button>
+            ))}
+          </div>
+        </Notice>
+      ) : null}
 
       <form onSubmit={submit}>
         <div className="fr-grid two">

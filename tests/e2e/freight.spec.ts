@@ -219,6 +219,28 @@ test.describe('freight workspace', () => {
     await page.screenshot({ path: `${SHOTS}/11-company-isolation.png`, fullPage: true });
   });
 
+  test('a filled-in spreadsheet fills the new request form, and creates nothing by itself', async ({ page }) => {
+    await loadDemo(page);
+    const template = await page.request.get('/api/freight/template/rfq');
+    expect(template.ok()).toBeTruthy();
+    const before = (await (await page.request.get('/api/freight/state')).json()).overview.rfqs.length;
+
+    await page.goto('/freight/rfqs/new');
+    await page.locator('input[type="file"][accept=".xlsx,.csv"]').setInputFiles({
+      name: 'requirement.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: Buffer.from(await template.body()),
+    });
+
+    await expect(page.getByLabel('Title')).toHaveValue('Tyre import, North China to Alexandria');
+    await expect(page.getByLabel('Origin port')).toHaveValue('CNSHA');
+    await expect(page.getByLabel('Destination port')).toHaveValue('EGALY');
+    await expect(page.getByText(/Loaded "Tyre import/)).toBeVisible();
+    const after = (await (await page.request.get('/api/freight/state')).json()).overview.rfqs.length;
+    expect(after).toBe(before);
+    await page.screenshot({ path: `${SHOTS}/13-import-template.png`, fullPage: true });
+  });
+
   test('the workspace is usable at a narrow width', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loadDemo(page);

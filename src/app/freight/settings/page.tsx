@@ -35,6 +35,7 @@ export default function SettingsPage() {
           <CriteriaCard />
           <FxCard />
           <RemindersCard />
+          <AutomationCard />
         </div>
         <div className="stack">
           <IntegrationsCard />
@@ -244,6 +245,59 @@ function RemindersCard() {
             Save
           </button>
         </div>
+      </div>
+    </Card>
+  );
+}
+
+function AutomationCard() {
+  const { state, run, busy } = useFreight();
+  const [preselect, setPreselect] = React.useState(Boolean(state?.settings?.preselectLane));
+  const [closeAtDeadline, setCloseAtDeadline] = React.useState(Boolean(state?.settings?.closeAtDeadline));
+  const canEdit = state?.user?.role === 'logistics_manager';
+  const scheduled = Boolean(state?.integrations?.collection?.pollSeconds || state?.integrations?.collection?.externalTrigger);
+
+  return (
+    <Card>
+      <CardHead
+        title="Optional automation"
+        hint="Both are off unless a manager switches them on. Neither sends or approves anything."
+      />
+      <div className="card-body stack">
+        <label className="row small" style={{ gap: 8, alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={preselect} disabled={!canEdit} onChange={(e) => setPreselect(e.target.checked)} />
+          <span>
+            <b>Pre-select providers that serve the lane.</b> A new request starts with every contactable provider
+            whose lanes include its route already ticked. Restricted providers are never included, and you review
+            the list before any email is prepared.
+          </span>
+        </label>
+        <label className="row small" style={{ gap: 8, alignItems: 'flex-start' }}>
+          <input
+            type="checkbox"
+            checked={closeAtDeadline}
+            disabled={!canEdit}
+            onChange={(e) => setCloseAtDeadline(e.target.checked)}
+          />
+          <span>
+            <b>Close collection when the response deadline passes.</b> Checked each time replies are collected.
+            Late replies are still filed, and a manager can reopen the request.
+            {closeAtDeadline && !scheduled ? ' Reply collection is not scheduled, so this only happens when someone presses Collect now.' : ''}
+          </span>
+        </label>
+        {canEdit ? (
+          <div>
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() => void run({ type: 'settings.automation', preselectLane: preselect, closeAtDeadline })}
+            >
+              Save
+            </button>
+          </div>
+        ) : (
+          <p className="small muted">Only the Logistics Operations Manager can change these.</p>
+        )}
       </div>
     </Card>
   );

@@ -39,6 +39,7 @@ import type {
   Surcharge,
   User,
 } from './types';
+import { isSystemRole } from './types';
 
 export function newId(prefix: string): string {
   return `${prefix}_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
@@ -91,6 +92,9 @@ export function assertCanEdit(ctx: Ctx): void {
   }
   if (ctx.user.role === 'system_mailbox_collector') {
     throw forbidden('The Mailbox Collector only files incoming replies. A person has to make this change.');
+  }
+  if (isSystemRole(ctx.user.role)) {
+    throw forbidden('That is an automatic process, not a person. A person has to make this change.');
   }
 }
 
@@ -437,6 +441,15 @@ export function insertRfq(r: Rfq): void {
       r.closedAt,
       r.closedBy,
     );
+}
+
+/** Sent RFQs still collecting whose deadline has passed, across every company. Deadline job only. */
+export function listRfqsPastDeadline(at: Instant): Rfq[] {
+  return (
+    db()
+      .prepare("SELECT * FROM rfqs WHERE status IN ('sent', 'collecting') AND response_deadline <= ? ORDER BY response_deadline")
+      .all(at) as Record<string, unknown>[]
+  ).map(rowToRfq);
 }
 
 export function updateRfq(r: Rfq): void {
