@@ -320,7 +320,7 @@ first real sign-in needs the app registration.
 ### Switching between the demonstration and production (local testing)
 
 Set `FREIGHT_MODE_SWITCH=on` (and, to keep real data out of the application
-folder, `FREIGHT_DATA_DIR` to a short path such as `C:reight-real`). A
+folder, `FREIGHT_DATA_DIR` to a short path such as `C:\freight-real`). A
 **Demo workspace / Production** control then appears in the top bar and on the
 sign-in page.
 

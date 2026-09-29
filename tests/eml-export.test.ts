@@ -87,7 +87,7 @@ describe('attachments', () => {
   const workbook = {
     filename: 'Shipping requirement RFQ-MPD-2026-0001.xlsx',
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    content: Buffer.from('PK pretend workbook'),
+    content: Buffer.from('PK\u0003\u0004 pretend workbook'),
   };
 
   it('carries the file, its name and its bytes', () => {

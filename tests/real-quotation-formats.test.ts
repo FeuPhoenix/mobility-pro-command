@@ -203,3 +203,33 @@ O/F: USD 10,550/40HC`);
   });
 });
 
+describe('figures in the thread that are not this provider’s offer', () => {
+  it('does not read our own target back as their quotation', () => {
+    // Replies quote the conversation, so our target sits in the message. Read
+    // as their rate it makes a provider look unbeatable, which is the worst
+    // direction to be wrong in.
+    expect(read("Target rate: $1000/40’HC.").baseFreight.value).toBeNull();
+    expect(read('Our budget rate is USD 900 per 40HQ').baseFreight.value).toBeNull();
+  });
+
+  it('does not read prose about rates as a rate', () => {
+    // Met as: "The gap between Jeddah and Dammam freight rates should not
+    // exceed $700~$800."
+    const q = read('The gap between Jeddah and Dammam freight rates should not exceed $700~$800.');
+    expect(q.baseFreight.value).toBeNull();
+  });
+
+  it('does not read a reference out of a subject line', () => {
+    // Met as: "Subject: RE: Freight Rate Req- October/QT786YU7"
+    const q = read('Subject: RE: Freight Rate Req- October/QT786YU7 for 40HQ');
+    expect(q.baseFreight.value).toBeNull();
+  });
+
+  it('still reads a genuine offer in the same message', () => {
+    const q = read(`Target rate: $1000/40’HC.
+
+Our offer: USD 8,900.00 per 40HQ`);
+    expect(q.baseFreight.value).toBe(8900);
+  });
+});
+

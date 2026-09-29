@@ -130,7 +130,7 @@ export function parseAmount(fragment: string): { amount: number | null; currency
   // Strip the currency words and the equipment codes first, so neither "USD"
   // nor the "40" of "40HC" can be mistaken for the amount.
   const stripped = upper
-    .replace(/(?:20|40|45)\s?(?:GP|HC|RF)/g, ' ')
+    .replace(/\b(?:20|40|45)\s?(?:GP|HC|RF)\b/g, ' ')
     .replace(/[A-Z]{3}/g, ' ')
     .replace(/[$€£]/g, ' ');
 
@@ -390,6 +390,22 @@ const MIN_PLAUSIBLE_RATE = 100;
  * is a surcharge line, so both are stepped over. This is the last resort,
  * after every labelled form has failed.
  */
+/**
+ * Figures in a thread that are not this provider's offer.
+ *
+ * Replies quote the whole conversation back, so our own target sits in the
+ * message too. Reading "Target rate: $1000/40HC" as their quotation makes a
+ * provider look unbeatable, which is the worst direction to be wrong in.
+ */
+const NOT_AN_OFFER =
+  /\b(target|budget|expected|indicative|last(?:\s+year)?|previous|old|benchmark|market)\s+(rate|freight|price)/i;
+
+/**
+ * What a rate looks like immediately after its label: a currency, a symbol, or
+ * the figure itself. Prose that merely mentions rates does not start this way.
+ */
+const STARTS_WITH_MONEY = /^(?:USD|EUR|EGP|GBP|CNY|AED|SAR|TRY|CHF|JPY|[$€£]|\d)/i;
+
 /** Strips the things that look like numbers but are not money. */
 function withoutNoise(line: string): string {
   return line
@@ -413,11 +429,23 @@ function rateCandidates(lines: string[]): Hit[] {
     /(?:^|\b)(?:s\/r|o\/f|sell(?:ing)? rate|our rate|rate)\s*[:\-]\s*(.+)$/i,
   ];
 
+  // A quoted header is never a rate, however much it looks like one:
+  // "Subject: RE: Freight Rate Req- October/QT786YU7" read as 786.
+  const isQuotedHeader = (l: string) => /^\s*(subject|from|to|sent|cc|date)\s*:/i.test(l);
+
   const out: Hit[] = [];
   for (const pattern of labelled) {
     for (let i = 0; i < lines.length; i++) {
       const m = pattern.exec(lines[i]);
-      if (m) out.push({ raw: withoutNoise(m[1] ?? m[0]), line: lines[i].trim(), lineNumber: i + 1 });
+      if (!m) continue;
+      const after = (m[1] ?? '').trim();
+      // What follows the label has to be money. Without this, "...Dammam
+      // freight rates should not exceed $700" reads as a rate of 700, and a
+      // subject line, "Freight Rate Req- October/QT786YU7", as a rate of 786.
+      if (isQuotedHeader(lines[i])) continue;
+      if (!STARTS_WITH_MONEY.test(after)) continue;
+      if (NOT_AN_OFFER.test(lines[i])) continue;
+      out.push({ raw: withoutNoise(after), line: lines[i].trim(), lineNumber: i + 1 });
     }
   }
 
@@ -425,9 +453,11 @@ function rateCandidates(lines: string[]): Hit[] {
   // looks like when nobody labelled it.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (isQuotedHeader(line)) continue;
     if (!parseContainerType(line)) continue;
     if (/\b(total|all[- ]in|grand total|surcharge|cancellation|thc|baf|isps|doc(umentation)? fee)\b/i.test(line)) continue;
     if (NOT_A_CHARGE_LINE.test(line)) continue;
+    if (NOT_AN_OFFER.test(line)) continue;
     out.push({ raw: withoutNoise(line), line: line.trim(), lineNumber: i + 1 });
   }
   return out;

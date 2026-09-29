@@ -153,7 +153,7 @@ SAMPLES=C:/path/to/eml/folder npx tsx scripts/extraction-report.mts
 | --- | --- | --- |
 | Currency | 73% | 82% |
 | Container basis | 5% | 70% |
-| Base freight | 32% | 50% |
+| Base freight | 32% | 48% |
 | Transit time | 20% | 36% |
 | Validity | 9% | 25% |
 | Unreadable files | 6 | 1 |
@@ -161,8 +161,9 @@ SAMPLES=C:/path/to/eml/folder npx tsx scripts/extraction-report.mts
 **Read the base freight number carefully.** The old 32% included rubbish: a
 container count from "12 x 40HC", a reference from "EQJ-SIGN-26071683" read as
 minus twenty-six million. Those are refused now, with the reason shown to the
-reviewer, so today's 50% is 22 files whose rate can be trusted rather than 14
-that happened to produce a number. **A wrong rate is worse than a missing one:
+reviewer, so today's 48% is 21 files whose rate can be trusted rather than 14
+that happened to produce a number. Every one was read back against its source
+line by hand. **A wrong rate is worse than a missing one:
 it reaches the comparison without anyone looking at it.**
 
 What the samples taught, all now handled: carriers do not write "ocean
@@ -321,6 +322,12 @@ of people and roles.
 Each of these cost real time to find. They are written down so they cost you
 none.
 
+- **A `` written into a file by a script can arrive as a backspace.** Two
+  patterns in `parsers/text.ts` and two documentation paths were silently
+  corrupted that way: the regex began with a control character and could never
+  match, and `data\backup.log` rendered as `dataackup.log`. Nothing failed
+  loudly. `grep -rlP '[\x00-\x08\x0b\x0c\x0e-\x1f]' src tests scripts docs`
+  finds them.
 - **The parsers are the most fragile part.** A regex once read `USD 1200.00` as
   `120`, because its first alternative capped the integer at three digits — and
   every fixture used comma separators, so it stayed invisible until a test used

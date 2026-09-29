@@ -222,7 +222,7 @@ A Windows scheduled task, **Mobility Pro Freight nightly backup**, runs
 `scripts
 ightly-backup.cmd` at 02:00 daily. That runs the backup *inside* the
 container, so it captures the volume the application actually uses, and logs to
-`dataackup.log`. Tested by running the task by hand.
+`data\backup.log`. Tested by running the task by hand.
 
 Restore-test one at any time - it touches nothing live:
 

@@ -315,7 +315,7 @@ describe.skipIf(!configured)('the comparison destination, against a real instanc
       ...(comparisonInput(key) as Record<string, unknown>),
       workbook: {
         filename: `Freight comparison ${key}.xlsx`,
-        content: Buffer.from('PK not a real workbook, but a real upload'),
+        content: Buffer.from('PK\u0003\u0004 not a real workbook, but a real upload'),
       },
     } as never;
 
