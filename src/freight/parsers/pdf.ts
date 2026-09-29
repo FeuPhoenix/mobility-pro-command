@@ -23,9 +23,39 @@ export interface PdfText {
  */
 async function loadPdfjs() {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // No worker process in Node: the main-thread path is the supported one.
-  pdfjs.GlobalWorkerOptions.workerSrc = '';
+
+  // An empty workerSrc does not mean "no worker": pdfjs falls back to a fake
+  // worker, which then refuses with `No "GlobalWorkerOptions.workerSrc"
+  // specified` and every PDF reads as unreadable. Found against real carrier
+  // quotations, where all six PDFs failed for this reason rather than anything
+  // to do with their contents.
+  //
+  // It has to be a file:// URL, not a path: Node's ESM loader rejects a bare
+  // Windows path as an unsupported 'c:' protocol.
+  const { createRequire } = await import('node:module');
+  const { pathToFileURL } = await import('node:url');
+  const require = createRequire(import.meta.url);
+  pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(
+    require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs'),
+  ).href;
+
   return pdfjs;
+}
+
+/**
+ * Where pdfjs finds the metrics for the standard fonts.
+ *
+ * A PDF that uses Helvetica or Times without embedding it - which plenty of
+ * quotation templates do - yields no text without this, and warns about it
+ * rather than failing, so the file looks empty instead of broken.
+ */
+async function standardFontDataUrl(): Promise<string> {
+  const { createRequire } = await import('node:module');
+  const { pathToFileURL } = await import('node:url');
+  const require = createRequire(import.meta.url);
+  const pkg = require.resolve('pdfjs-dist/package.json');
+  const { dirname, join } = await import('node:path');
+  return pathToFileURL(join(dirname(pkg), 'standard_fonts/')).href;
 }
 
 export async function extractPdfText(buffer: Buffer, filename: string): Promise<PdfText> {
@@ -44,6 +74,7 @@ export async function extractPdfText(buffer: Buffer, filename: string): Promise<
       data: new Uint8Array(buffer),
       isEvalSupported: false,
       useSystemFonts: false,
+      standardFontDataUrl: await standardFontDataUrl(),
     }).promise;
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
