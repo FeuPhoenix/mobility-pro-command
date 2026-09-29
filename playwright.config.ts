@@ -32,6 +32,6 @@ export default defineConfig({
     timeout: 120_000,
     // The freight module keeps a real database, so give the browser tests
     // their own directory rather than sharing a developer's local data.
-    env: { MPC_DATA_DIR: '.demo-data-e2e', FREIGHT_DATA_DIR: '.freight-data-e2e' },
+    env: { MPC_DATA_DIR: '.demo-data-e2e', FREIGHT_DATA_DIR: '.freight-data-e2e', FREIGHT_MODE_SWITCH: 'off' },
   },
 });

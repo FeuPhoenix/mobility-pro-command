@@ -13,6 +13,7 @@ import { listPeople } from '@/freight/auth/people';
 import { listRfqRequests } from '@/freight/repo';
 import { intakeEnabled } from '@/freight/service/intake';
 import { needsFirstRunSetup } from '@/freight/auth/password';
+import { modeSwitchEnabled, workspaceMode } from '@/freight/workspaceMode';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,7 @@ export async function GET(request: Request) {
         needsSetup: mode === 'password' ? needsFirstRunSetup() : false,
         problems: mode === 'entra' ? entraConfig().problems : [],
       },
+      workspace: { switchEnabled: modeSwitchEnabled(), mode: workspaceMode() },
     };
     // In demo mode there is nobody to sign in as, so this is just an empty
     // workspace. In the two real modes it means "sign in", and the client
@@ -68,6 +70,7 @@ export async function GET(request: Request) {
     seeded: listRfqs(ctx).length > 0 || companies.length > 0,
     user: ctx.user,
     auth: { mode, signedIn: true, problems: [] },
+    workspace: { switchEnabled: modeSwitchEnabled(), mode: workspaceMode() },
     // Demo mode: everyone, for the "Acting as" picker. Signed-in mode: only a
     // manager sees people, for the People screen, and only those they manage.
     users:

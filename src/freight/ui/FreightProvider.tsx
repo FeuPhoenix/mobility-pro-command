@@ -51,6 +51,8 @@ export interface FreightState {
     needsSetup?: boolean;
     problems: string[];
   };
+  /** Present when the server allows switching between the demonstration and production. */
+  workspace?: { switchEnabled: boolean; mode: 'demo' | 'production' };
   user: User | null;
   /** Demo mode: everyone, for the picker. Signed-in mode: the People list. */
   users: User[];

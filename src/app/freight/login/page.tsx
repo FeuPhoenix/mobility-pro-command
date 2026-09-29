@@ -12,6 +12,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHead, Field, Notice } from '@/components/ui';
+import { WorkspaceModeSwitch } from '@/freight/ui/WorkspaceModeSwitch';
 
 interface DemoAccount {
   name: string;
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = React.useState<'loading' | 'signin' | 'setup'>('loading');
   const [demo, setDemo] = React.useState<{ password: string; accounts: DemoAccount[] } | null>(null);
+  const [canGoDemo, setCanGoDemo] = React.useState(false);
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -39,6 +41,7 @@ export default function LoginPage() {
           signedIn?: boolean;
           needsSetup?: boolean;
           demo?: { password: string; accounts: DemoAccount[] } | null;
+          workspace?: { switchEnabled: boolean };
         };
         if (cancelled) return;
         if (data.signedIn) {
@@ -46,6 +49,8 @@ export default function LoginPage() {
           return;
         }
         setDemo(data.demo ?? null);
+        // Only offered while nobody has an account, so there is nothing to protect.
+        setCanGoDemo(Boolean(data.workspace?.switchEnabled && data.needsSetup));
         setMode(data.needsSetup ? 'setup' : 'signin');
       } catch {
         if (!cancelled) setMode('signin');
@@ -162,6 +167,8 @@ export default function LoginPage() {
             </form>
           </div>
         </Card>
+
+        {canGoDemo ? <WorkspaceModeSwitch mode="production" /> : null}
 
         {demo && demo.accounts.length > 0 ? (
           <Card>

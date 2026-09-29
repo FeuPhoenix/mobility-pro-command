@@ -26,7 +26,7 @@ Run `npm test` to see them pass.
 | — | Company isolation | `freight.test.ts`: *refuses a provider belonging to another company*, *refuses a direct read of another company's request*; browser: *company boundaries hold…* |
 | — | A reply is filed once, with its quotation, or not at all | `mailbox.test.ts`: *creates no duplicates…*; `ingest-atomic.test.ts` |
 
-Suite totals at handover (29 September 2026): 394 unit tests
+Suite totals at handover (29 September 2026): 401 unit tests
 (9 more skip without a live ERPNext), 26 browser tests (4 skip), 65 journey
 checks. `npm audit`: 0 vulnerabilities.
 

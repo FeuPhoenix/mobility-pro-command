@@ -213,6 +213,14 @@ script, and the application, look for a database with no path, because `??`
 does not treat an empty string as unset. Both now fall back to the default.
 
 
+## 2026-09-29 — Demo / production switch
+
+- [x] `FREIGHT_MODE_SWITCH=on` adds a Demo workspace / Production control. Two
+      separate databases; demo is forced to simulated adapters; production to
+      demo needs a signed-in manager (`tests/workspace-mode.test.ts`)
+- [x] Password mode now shows Sign out and no "Acting as" picker (it showed the
+      demo picker to a signed-in manager)
+
 ## 2026-09-29 — Handover tidy-up
 
 Tagged `v1.1-handover` on `main`.

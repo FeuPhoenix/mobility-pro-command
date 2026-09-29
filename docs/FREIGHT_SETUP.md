@@ -25,7 +25,7 @@ npm start            # http://localhost:4310/freight
 Checks:
 
 ```bash
-npm test             # 394 unit tests (Vitest), 9 skipped without a live ERPNext
+npm test             # 401 unit tests (Vitest), 9 skipped without a live ERPNext
 npm run test:e2e     # 26 browser tests + 4 skipped (Playwright, uses your installed Chrome)
 node scripts/journey.mjs   # 65 end-to-end checks over HTTP against a running server
 ```
@@ -316,6 +316,27 @@ and changes to people.
 **Not verified live.** Tested with a locally generated signing key standing in
 for Microsoft, and on a running server up to the redirect to Microsoft. The
 first real sign-in needs the app registration.
+
+### Switching between the demonstration and production (local testing)
+
+Set `FREIGHT_MODE_SWITCH=on` (and, to keep real data out of the application
+folder, `FREIGHT_DATA_DIR` to a short path such as `C:reight-real`). A
+**Demo workspace / Production** control then appears in the top bar and on the
+sign-in page.
+
+- The two are **separate databases**: the demonstration lives in
+  `<data>/demo/`, production in `<data>/freight.db`. Switching changes which one
+  is open. It never copies, merges or deletes anything.
+- **Demo** is the anonymous "Acting as" picker, and email and ERPNext stay
+  simulated whatever the environment says.
+- **Production** is a real sign-in: Microsoft if `AUTH_MODE=entra`, otherwise
+  email and password. The first visit offers to create the first account, which
+  becomes the manager. *Load demo data* is refused there.
+- **Demo to production** is open to anyone (it can only lock things).
+  **Production to demo** needs a signed-in manager, unless nobody has an
+  account yet.
+- It is **off by default**. A deployment leaves it off, and Go-live readiness
+  warns if it is on.
 
 ### `password` mode, in detail
 

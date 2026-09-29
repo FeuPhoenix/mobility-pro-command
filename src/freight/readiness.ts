@@ -104,6 +104,13 @@ export function checkReadiness(env: NodeJS.ProcessEnv = process.env): Readiness 
       : { id: 'auth.https', area: 'Sign-in', status: 'warn', title: 'Confirm HTTPS in front of the application', detail: 'Either the proxy sets x-forwarded-proto: https, or set FREIGHT_FORCE_SECURE_COOKIES=true.' },
   );
 
+  if (env.FREIGHT_MODE_SWITCH === 'on') {
+    add({
+      id: 'auth.modeSwitch', area: 'Sign-in', status: 'warn', title: 'The demo/production switch is on',
+      detail: 'A signed-in manager can switch this server to the anonymous demonstration workspace. Production data is not exposed by it, but on a server people rely on, remove FREIGHT_MODE_SWITCH and restart.',
+    });
+  }
+
   /* --------------------------------- Data ---------------------------------- */
 
   const demoData = getSetting<boolean>('demo.mode', false);

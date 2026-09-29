@@ -26,6 +26,7 @@
  * a stub server, but it has not been run against a real Frappe site.
  */
 
+import { demoWorkspaceActive } from '../workspaceMode';
 import type { Comparison, Rfq } from '../types';
 import {
   quotationPayload,
@@ -834,14 +835,14 @@ export function resolveErp(): ErpAdapter {
   // The demonstration dataset asks for one recoverable failure so the retry
   // path is exercised for real. Outside the demo this is off.
   const failFirst = getSetting<boolean>('demo.erpFailFirst', false);
-  if ((process.env.ERPNEXT_ADAPTER ?? 'simulated') !== 'live') return new SimulatedErp(failFirst);
+  if (demoWorkspaceActive() || (process.env.ERPNEXT_ADAPTER ?? 'simulated') !== 'live') return new SimulatedErp(failFirst);
   const { config } = liveConfig();
   if (!config) return new SimulatedErp(failFirst);
   return new LiveErp(config);
 }
 
 export function erpStatusForDisplay(): ErpStatus {
-  const requested = process.env.ERPNEXT_ADAPTER ?? 'simulated';
+  const requested = demoWorkspaceActive() ? 'simulated' : (process.env.ERPNEXT_ADAPTER ?? 'simulated');
   if (requested !== 'live') return new SimulatedErp().status();
   const { config, missing } = liveConfig();
   if (!config) {

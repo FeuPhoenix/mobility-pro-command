@@ -24,12 +24,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { activeAttachmentDir, activeDbFile, baseDataDir } from './workspaceMode';
 
-export const DATA_DIR = process.env.FREIGHT_DATA_DIR
-  ? path.resolve(process.env.FREIGHT_DATA_DIR)
-  : path.resolve(process.cwd(), 'data');
+export const DATA_DIR = baseDataDir();
 
-export const ATTACHMENT_DIR = path.join(DATA_DIR, 'attachments');
+/** Where attachments go now: the demonstration workspace keeps its own. */
+export function attachmentDir(): string {
+  return activeAttachmentDir();
+}
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -306,28 +308,54 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `;
 
-let instance: DatabaseSync | null = null;
+interface Open {
+  handle: DatabaseSync;
+  /** The file it was opened from; null for one handed in by a test. */
+  file: string | null;
+}
+
+let instance: Open | null = null;
 
 /**
  * The process-wide handle. Next.js reloads modules in development, so the
  * instance is cached on `globalThis` to avoid opening the file repeatedly.
+ * It follows the active workspace: when the mode is switched, the next call
+ * closes the old database and opens the other one.
  */
 export function db(): DatabaseSync {
-  if (instance) return instance;
-  const cached = (globalThis as { __freightDb?: DatabaseSync }).__freightDb;
-  if (cached) {
-    instance = cached;
-    return cached;
+  const wanted = activeDbFile();
+  const held = instance ?? (globalThis as { __freightDb?: Open }).__freightDb ?? null;
+  if (held && (held.file === null || held.file === wanted)) {
+    instance = held;
+    return held.handle;
   }
-  mkdirSync(DATA_DIR, { recursive: true });
-  mkdirSync(ATTACHMENT_DIR, { recursive: true });
-  const file = process.env.FREIGHT_DB_FILE || path.join(DATA_DIR, 'freight.db');
-  const handle = new DatabaseSync(file);
+  if (held) {
+    try {
+      held.handle.close();
+    } catch {
+      /* already closed */
+    }
+  }
+  mkdirSync(path.dirname(wanted), { recursive: true });
+  mkdirSync(attachmentDir(), { recursive: true });
+  const handle = new DatabaseSync(wanted);
   handle.exec(SCHEMA);
   migrate(handle);
-  instance = handle;
-  (globalThis as { __freightDb?: DatabaseSync }).__freightDb = handle;
+  instance = { handle, file: wanted };
+  (globalThis as { __freightDb?: Open }).__freightDb = instance;
   return handle;
+}
+
+/** Closes and forgets the open handle, so the next call opens the active workspace. Tests only. */
+export function resetDb(): void {
+  const held = instance ?? (globalThis as { __freightDb?: Open }).__freightDb ?? null;
+  try {
+    held?.handle.close();
+  } catch {
+    /* already closed */
+  }
+  instance = null;
+  (globalThis as { __freightDb?: Open }).__freightDb = undefined;
 }
 
 /** An isolated in-memory database. Used by the tests so they never touch disk. */
@@ -375,8 +403,8 @@ function migrate(handle: DatabaseSync): void {
 
 /** Point the module-wide handle at a specific database. Tests only. */
 export function useDb(handle: DatabaseSync): void {
-  instance = handle;
-  (globalThis as { __freightDb?: DatabaseSync }).__freightDb = handle;
+  instance = { handle, file: null };
+  (globalThis as { __freightDb?: Open }).__freightDb = instance;
 }
 
 /**

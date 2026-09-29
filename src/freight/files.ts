@@ -9,7 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ATTACHMENT_DIR } from './db';
+import { attachmentDir } from './db';
 
 /** Only these may be attached to, or accepted from, an email. */
 export const ALLOWED_TYPES: Record<string, string> = {
@@ -65,16 +65,16 @@ function sanitise(filename: string): string {
 }
 
 export function storeFile(filename: string, content: Buffer): string {
-  mkdirSync(ATTACHMENT_DIR, { recursive: true });
+  mkdirSync(attachmentDir(), { recursive: true });
   const key = `${randomUUID().slice(0, 8)}-${sanitise(filename)}`;
   assertSafeKey(key);
-  writeFileSync(path.join(ATTACHMENT_DIR, key), content);
+  writeFileSync(path.join(attachmentDir(), key), content);
   return key;
 }
 
 export function readFile(key: string): Buffer {
   assertSafeKey(key);
-  const full = path.join(ATTACHMENT_DIR, key);
+  const full = path.join(attachmentDir(), key);
   if (!existsSync(full)) throw new FileError('That attachment is no longer stored on this server.');
   return readFileSync(full);
 }
@@ -85,11 +85,11 @@ export function fileExists(key: string): boolean {
   } catch {
     return false;
   }
-  return existsSync(path.join(ATTACHMENT_DIR, key));
+  return existsSync(path.join(attachmentDir(), key));
 }
 
 export function fileSize(key: string): number {
   assertSafeKey(key);
-  const full = path.join(ATTACHMENT_DIR, key);
+  const full = path.join(attachmentDir(), key);
   return existsSync(full) ? statSync(full).size : 0;
 }

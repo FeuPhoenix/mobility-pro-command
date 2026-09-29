@@ -4,6 +4,7 @@ import { tryResolveCtx } from '@/freight/session';
 import { listUsers } from '@/freight/repo';
 import { getSetting } from '@/freight/db';
 import { DEMO_PASSWORD } from '@/freight/demo/fixtures';
+import { modeSwitchEnabled, workspaceMode } from '@/freight/workspaceMode';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,5 +35,6 @@ export async function GET() {
     signedIn: Boolean(ctx),
     needsSetup: ctx ? false : needsFirstRunSetup(),
     demo,
+    workspace: { switchEnabled: modeSwitchEnabled(), mode: workspaceMode() },
   });
 }

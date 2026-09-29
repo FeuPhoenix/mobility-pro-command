@@ -24,6 +24,7 @@
  * tenant from this environment. It is covered by tests against a faked Graph.
  */
 
+import { demoWorkspaceActive } from '../workspaceMode';
 import type { IncomingMail } from '../service/inbox';
 import { graphConfig, graphToken } from './mail';
 
@@ -350,7 +351,7 @@ export class GraphMailbox implements MailboxSource {
 /* -------------------------------- Resolution -------------------------------- */
 
 export function resolveMailbox(): MailboxSource {
-  if ((process.env.MAILBOX_ADAPTER ?? 'simulated') !== 'graph') return new SimulatedMailbox();
+  if (demoWorkspaceActive() || (process.env.MAILBOX_ADAPTER ?? 'simulated') !== 'graph') return new SimulatedMailbox();
   const { config } = graphConfig();
   if (!config) return new SimulatedMailbox();
   return new GraphMailbox(config);
@@ -358,7 +359,7 @@ export function resolveMailbox(): MailboxSource {
 
 /** Status for display, including why a live mailbox is not in use. */
 export function mailboxStatusForDisplay(): MailboxStatus {
-  const requested = process.env.MAILBOX_ADAPTER ?? 'simulated';
+  const requested = demoWorkspaceActive() ? 'simulated' : (process.env.MAILBOX_ADAPTER ?? 'simulated');
   if (requested !== 'graph') return new SimulatedMailbox().status();
   const { config, missing } = graphConfig();
   if (!config) {

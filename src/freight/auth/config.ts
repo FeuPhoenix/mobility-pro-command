@@ -15,9 +15,17 @@
  * demo picker.
  */
 
+import { modeSwitchEnabled, workspaceMode } from '../workspaceMode';
+
 export type AuthMode = 'demo' | 'password' | 'entra';
 
 export function authMode(): AuthMode {
+  // With the mode switch on, the demonstration workspace is the picker and
+  // production is always a real sign-in: the configured one, else passwords.
+  if (modeSwitchEnabled()) {
+    if (workspaceMode() === 'demo') return 'demo';
+    return process.env.AUTH_MODE === 'entra' ? 'entra' : 'password';
+  }
   if (process.env.AUTH_MODE === 'entra') return 'entra';
   if (process.env.AUTH_MODE === 'password') return 'password';
   return 'demo';

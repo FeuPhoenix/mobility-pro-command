@@ -39,7 +39,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 394 unit tests, 9 skipped without a live ERPNext
+npm test                 # 401 unit tests, 9 skipped without a live ERPNext
 npm run test:e2e         # 26 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```

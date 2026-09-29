@@ -18,6 +18,8 @@
  * docs/FREIGHT_SETUP.md for exactly what is required to activate and verify it.
  */
 
+import { demoWorkspaceActive } from '../workspaceMode';
+
 export interface OutboundMessage {
   to: { name: string | null; email: string }[];
   cc: { name: string | null; email: string }[];
@@ -345,7 +347,7 @@ export class GraphTransport implements MailTransport {
 /* -------------------------------- Resolution -------------------------------- */
 
 export function resolveMailTransport(): MailTransport {
-  if ((process.env.MAIL_ADAPTER ?? 'simulated') !== 'graph') return new SimulatedTransport();
+  if (demoWorkspaceActive() || (process.env.MAIL_ADAPTER ?? 'simulated') !== 'graph') return new SimulatedTransport();
   const { config } = graphConfig();
   if (!config) return new SimulatedTransport();
   return new GraphTransport(config);
@@ -353,7 +355,7 @@ export function resolveMailTransport(): MailTransport {
 
 /** Status for display, including why a live transport is not in use. */
 export function mailStatusForDisplay(): TransportStatus {
-  const requested = process.env.MAIL_ADAPTER ?? 'simulated';
+  const requested = demoWorkspaceActive() ? 'simulated' : (process.env.MAIL_ADAPTER ?? 'simulated');
   if (requested !== 'graph') return new SimulatedTransport().status();
   const { config, missing } = graphConfig();
   if (!config) {

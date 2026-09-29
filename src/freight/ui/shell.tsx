@@ -19,14 +19,17 @@ const NAV = [
   { href: '/freight/settings', label: 'Settings' },
 ];
 
+import { WorkspaceModeSwitch } from './WorkspaceModeSwitch';
+
 export function FreightShell({ children }: { children: React.ReactNode }) {
   const { state, loading, error, busy, companyId, setCompanyId, signOut, switchUser, loadDemo, toasts, dismissToast } =
     useFreight();
   const pathname = usePathname();
   const [confirmDemo, setConfirmDemo] = React.useState(false);
-  const signIn = state?.auth?.mode === 'entra';
+  // Both real modes have a signed-in person: no "Acting as" picker, and a Sign out.
+  const signIn = state?.auth?.mode === 'entra' || state?.auth?.mode === 'password';
 
-  if (signIn && state && !state.auth?.signedIn) {
+  if (state?.auth?.mode === 'entra' && !state.auth.signedIn) {
     return <SignInScreen problems={state.auth?.problems ?? []} />;
   }
 
@@ -106,6 +109,7 @@ export function FreightShell({ children }: { children: React.ReactNode }) {
           </div>
 
           {state?.integrations?.demoMode ? <span className="demo-chip">Demo data</span> : null}
+          {state?.workspace?.switchEnabled ? <WorkspaceModeSwitch mode={state.workspace.mode} /> : null}
 
           <div className="topbar-spacer" />
 
