@@ -39,7 +39,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 401 unit tests, 9 skipped without a live ERPNext
+npm test                 # 438 unit tests, 9 skipped without a live ERPNext
 npm run test:e2e         # 26 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```
@@ -78,7 +78,8 @@ test.**
 9. **A charge the reader cannot place is shown to a person**, never dropped.
 10. **An email sent by a person is recorded as theirs.** Downloading the file
     passes the same approval gate as sending, and nothing claims this
-    application sent what someone sent from their own mailbox.
+    application sent what someone sent from their own mailbox. The request's
+    Activity names whoever approved and whoever sent each email.
 11. **Only checked quotations reach ERPNext**, and each revision is its own
     record. A missing charge is sent as null — but Frappe stores a Float as 0
     regardless, so `amount_missing` and `unstated_numbers` carry the
@@ -96,7 +97,9 @@ test.**
   detection. Excel comparison output.
 - **Authentication**, three modes: `demo` (the picker), `password` (scrypt,
   revocable sessions, throttling, first-run setup), `entra` (Sign in with
-  Microsoft, plus a People screen for managing access).
+  Microsoft, plus a People screen for managing access). A manager can set or
+  replace a colleague's password from Settings, People; doing so ends that
+  person's open sessions.
 - **`.eml` reading and writing** — real provider quotations can be loaded
   through the same pipeline as live mail, and an approved email can be
   downloaded and sent from a person's own Outlook, then recorded. **A pilot can
@@ -298,6 +301,15 @@ waiting on their answer); the ranking weights; the FX source; and the real list
 of people and roles.
 
 ## 7. Things that will bite you
+
+- **`.env.local` changes what the test suites test.** Next reads it, so a
+  machine that also runs a deployment from this folder (`AUTH_MODE=password`,
+  the workspace switch on) made 17 browser tests fail on configuration rather
+  than code. The browser suite pins its own mode now; remember it when a manual
+  check behaves unexpectedly.
+- **An effect that depends on an array from a fetch runs on every fetch.** The
+  email panel reset its form on `email.to`, which is a new array each time, so
+  any background refresh closed the editor and discarded what had been typed.
 
 Each of these cost real time to find. They are written down so they cost you
 none.
