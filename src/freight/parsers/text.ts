@@ -374,23 +374,63 @@ export interface TextExtraction {
 }
 
 /**
+ * Below this, an unlabelled figure is not an ocean freight rate.
+ *
+ * Real quotations on these lanes run from several hundred to several thousand
+ * dollars a box. Reading "12" out of "12 x 40HC" as a rate is worse than
+ * reading nothing: a wrong rate flows into the comparison and can recommend
+ * the wrong provider, while a missing one is shown to a person.
+ */
+const MIN_PLAUSIBLE_RATE = 100;
+
+/**
  * A line that looks like a rate because it carries money and a box size.
  *
  * `USD 7650/40FT HQ CNTR` is a rate; `Total: USD 12,622` is not, and neither
  * is a surcharge line, so both are stepped over. This is the last resort,
  * after every labelled form has failed.
  */
-function rateShapedLine(lines: string[]): Hit | null {
+/** Strips the things that look like numbers but are not money. */
+function withoutNoise(line: string): string {
+  return line
+    .replace(/\b(20|40|45)\s*(?:FT)?\s*['\u2019]?\s*(GP|HC|HQ|DC|ST|RF|RH)\b/gi, ' ')
+    .replace(/\b\d+\s*[x\u00d7]\s*(?=\d)/gi, ' ')
+    .replace(/\b(?!USD|EUR|EGP|GBP|CNY|AED|SAR|TRY|CHF|JPY)[A-Z]{2,}[A-Z\d/-]*\d{4,}\b/g, ' ');
+}
+
+/**
+ * Every line that might be the rate, in the order we trust them.
+ *
+ * Taking the first *match* was wrong: one junk line early in a message - a
+ * reference, a container count - blocked the real rate further down, because
+ * the search stopped at the match rather than at a usable figure. The caller
+ * walks these and takes the first that yields a plausible amount.
+ */
+function rateCandidates(lines: string[]): Hit[] {
+  const labelled: RegExp[] = [
+    /(?:base (?:ocean )?freight|ocean freight|sea freight(?: charges?)?|basic freight|freight rate)\s*[:\-]?\s*(.+)$/i,
+    /^\s*freight\s*[:\-]\s*(.+)$/i,
+    /(?:^|\b)(?:s\/r|o\/f|sell(?:ing)? rate|our rate|rate)\s*[:\-]\s*(.+)$/i,
+  ];
+
+  const out: Hit[] = [];
+  for (const pattern of labelled) {
+    for (let i = 0; i < lines.length; i++) {
+      const m = pattern.exec(lines[i]);
+      if (m) out.push({ raw: withoutNoise(m[1] ?? m[0]), line: lines[i].trim(), lineNumber: i + 1 });
+    }
+  }
+
+  // Then any line that carries both money and a box size, which is what a rate
+  // looks like when nobody labelled it.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!parseContainerType(line)) continue;
-    if (/\b(total|all[- ]in|grand total|surcharge|thc|baf|isps|doc(umentation)? fee)\b/i.test(line)) continue;
+    if (/\b(total|all[- ]in|grand total|surcharge|cancellation|thc|baf|isps|doc(umentation)? fee)\b/i.test(line)) continue;
     if (NOT_A_CHARGE_LINE.test(line)) continue;
-    const { amount } = parseAmount(line);
-    if (amount === null) continue;
-    return { raw: line, line: line.trim(), lineNumber: i + 1 };
+    out.push({ raw: withoutNoise(line), line: line.trim(), lineNumber: i + 1 });
   }
-  return null;
+  return out;
 }
 
 export function extractFromText(source: TextSource): TextExtraction {
@@ -405,17 +445,35 @@ export function extractFromText(source: TextSource): TextExtraction {
   // `S/R: USD 7650/40FT HQ CNTR`, or put the figure in a table cell of its own.
   // So: the labelled line first, then a line that carries an amount together
   // with a container size, which is what a rate looks like.
-  const freightHit =
-    findLine(lines, /(?:base (?:ocean )?freight|ocean freight|basic freight|freight rate)\s*[:\-]?\s*(.+)$/i) ??
-    findLine(lines, /^\s*freight\s*[:\-]\s*(.+)$/i) ??
-    findLine(lines, /(?:^|\b)(?:s\/r|o\/f|sell(?:ing)? rate|our rate|rate)\s*[:\-]\s*(.+)$/i) ??
-    rateShapedLine(lines);
-  const freightParsed = freightHit ? parseAmount(freightHit.raw) : { amount: null, currency: null };
+  // The first candidate that yields a plausible rate, not the first that
+  // matches. A reference or a container count early in the message used to stop
+  // the search before the real rate further down.
+  const candidates = rateCandidates(lines);
+  let freightHit: Hit | null = null;
+  let freightParsed: { amount: number | null; currency: string | null } = { amount: null, currency: null };
+  let rejected: { amount: number } | null = null;
+
+  for (const hit of candidates) {
+    const parsed = parseAmount(hit.raw);
+    if (parsed.amount === null || !Number.isFinite(parsed.amount)) continue;
+    if (parsed.amount < MIN_PLAUSIBLE_RATE) {
+      rejected ??= { amount: parsed.amount };
+      continue;
+    }
+    freightHit = hit;
+    freightParsed = parsed;
+    break;
+  }
+
   const baseFreight =
     freightHit && freightParsed.amount !== null
       ? make(freightParsed.amount, freightParsed.currency ? 'high' : 'medium', source, freightHit,
           freightParsed.currency ? null : 'The currency was not on this line; it was taken from elsewhere in the quotation.')
-      : missing<number>('No base freight rate was found.');
+      : missing<number>(
+          rejected
+            ? 'A figure was found where the rate should be, but it is too small to be an ocean freight rate, so it was not used.'
+            : 'No base freight rate was found.',
+        );
 
   // Currency: prefer the freight line, fall back to the first currency anywhere.
   let currency: Extracted<string>;

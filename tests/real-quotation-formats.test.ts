@@ -128,3 +128,78 @@ describe('validity, as carriers word it', () => {
     expect(read(line).validUntil.value).toBe(expected);
   });
 });
+
+describe('a figure that is not a rate is refused, not guessed', () => {
+  // These all produced "rates" from the real samples before the plausibility
+  // check. A wrong rate is worse than a missing one: it reaches the comparison
+  // without anyone looking at it, while a missing one is put in front of a
+  // person.
+  it('does not read a container count as a rate', () => {
+    // Met as: "Import 27 x40HC Arabian Tires"
+    const q = read('Confirmed order 12 x 40HC Qingdao to Jeddah, USD');
+    expect(q.baseFreight.value).toBeNull();
+  });
+
+  it('does not read a reference number as a rate', () => {
+    // Met as: "freight rate Req -- EQJ-SIGN-26071683", read as minus 26 million.
+    const q = read('RE: freight rate Req -- EQJ-SIGN-26071683 for 40HQ');
+    expect(q.baseFreight.value).toBeNull();
+  });
+
+  it('does not read a column header as a rate', () => {
+    // Met as: "20'GP(USD) 40'HQ(USD)" in a rate table header.
+    const q = read("POD CARRIER 20'GP(USD) 40'HQ(USD)");
+    expect(q.baseFreight.value).toBeNull();
+  });
+
+  it('says why, so the reviewer is not left guessing', () => {
+    const q = read('Our rate: USD 30 per 40HQ');
+    expect(q.baseFreight.value).toBeNull();
+    expect(q.baseFreight.note).toMatch(/too small to be an ocean freight rate/i);
+  });
+
+  it('still accepts a real rate', () => {
+    expect(read('USD 7650/40FT HQ CNTR').baseFreight.value).toBe(7650);
+    expect(read('Ocean freight: USD 1850.00 per 40HC').baseFreight.value).toBe(1850);
+  });
+});
+
+describe('the first plausible rate wins, not the first match', () => {
+  it('looks past a junk line to the real rate below it', () => {
+    // Met repeatedly: a reference near the top of the message matched the
+    // "rate:" label, and the search stopped there - so the genuine rate further
+    // down was never reached.
+    const q = read(`RE: freight rate Req -- EQJ-SIGN-26071683
+
+Sea freight charges: USD 9715/40HC
+Transit time: 24 days`);
+
+    expect(q.baseFreight.value).toBe(9715);
+  });
+
+  it('looks past a container count as well', () => {
+    const q = read(`Confirmed order 12 x 40HC Qingdao to Jeddah
+
+O/F: USD 10,550/40HC`);
+
+    expect(q.baseFreight.value).toBe(10550);
+  });
+
+  it('reads a rate on a lane-labelled line', () => {
+    // Met as: "Qingdao-Jeddah:     USD 9975.00 per 40'HC"
+    const q = read("Qingdao-Jeddah:     USD 9975.00 per 40'HC");
+    expect(q.baseFreight.value).toBe(9975);
+  });
+
+  it('reads a rate with the currency after the number', () => {
+    // Met as: "RCL 1450 USD/40'HC T/T 17 Days"
+    const q = read("Leam Chabang to Dammam Carrier: RCL 1450 USD/40'HC");
+    expect(q.baseFreight.value).toBe(1450);
+  });
+
+  it('does not treat a cancellation fee as the rate', () => {
+    const q = read("*   Cancellation fee: USD 200 per 40' HC");
+    expect(q.baseFreight.value).toBeNull();
+  });
+});
+

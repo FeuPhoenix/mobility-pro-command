@@ -151,12 +151,19 @@ SAMPLES=C:/path/to/eml/folder npx tsx scripts/extraction-report.mts
 
 | Field | Before | Now |
 | --- | --- | --- |
-| Currency | 73% | 80% |
+| Currency | 73% | 82% |
 | Container basis | 5% | 70% |
-| Base freight | 32% | 48% |
+| Base freight | 32% | 50% |
 | Transit time | 20% | 36% |
 | Validity | 9% | 25% |
 | Unreadable files | 6 | 1 |
+
+**Read the base freight number carefully.** The old 32% included rubbish: a
+container count from "12 x 40HC", a reference from "EQJ-SIGN-26071683" read as
+minus twenty-six million. Those are refused now, with the reason shown to the
+reviewer, so today's 50% is 22 files whose rate can be trusted rather than 14
+that happened to produce a number. **A wrong rate is worse than a missing one:
+it reaches the comparison without anyone looking at it.**
 
 What the samples taught, all now handled: carriers do not write "ocean
 freight", they write `USD5800/40HQ`; `HQ` and `HC` are the same box; and most
