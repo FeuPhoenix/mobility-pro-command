@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { formatEGP } from '@/domain/money';
 import type { MeasureKind, RecordRef } from '@/domain/types';
@@ -266,7 +267,7 @@ export function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
+  const dialog = (
     <>
       <div className="scrim" onClick={onClose} />
       <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
@@ -278,6 +279,10 @@ export function Modal({
       </div>
     </>
   );
+  // At the page root, not where it was opened: a parent with backdrop-filter or
+  // transform (the top bar has one) becomes the frame for `position: fixed`,
+  // which clipped and mis-sized dialogs opened from inside it.
+  return typeof document === 'undefined' ? dialog : createPortal(dialog, document.body);
 }
 
 /* ---------------------------------- Icons ---------------------------------- */
