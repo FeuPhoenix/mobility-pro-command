@@ -32,6 +32,16 @@ export default defineConfig({
     timeout: 120_000,
     // The freight module keeps a real database, so give the browser tests
     // their own directory rather than sharing a developer's local data.
-    env: { MPC_DATA_DIR: '.demo-data-e2e', FREIGHT_DATA_DIR: '.freight-data-e2e', FREIGHT_MODE_SWITCH: 'off' },
+    //
+    // The sign-in mode is pinned as well. Next reads `.env.local`, so a machine
+    // that also runs a deployment from this folder (AUTH_MODE=password) would
+    // otherwise change what the suite tests, and seeding would be refused.
+    // Values passed here win: Next does not override what is already set.
+    env: {
+      MPC_DATA_DIR: '.demo-data-e2e',
+      FREIGHT_DATA_DIR: '.freight-data-e2e',
+      FREIGHT_MODE_SWITCH: 'off',
+      AUTH_MODE: 'demo',
+    },
   },
 });

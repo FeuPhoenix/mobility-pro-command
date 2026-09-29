@@ -40,7 +40,12 @@ export function EmailPanel({
     setTo(email.to.map((r) => r.email).join(', '));
     setCc(email.cc.map((r) => r.email).join(', '));
     setEditing(false);
-  }, [email.id, email.contentHash, email.subject, email.bodyText, email.to, email.cc]);
+    // Only the identity of the email and a hash of its content, deliberately.
+    // `email.to` and `email.cc` are fresh arrays on every fetch, so listing them
+    // reran this on any background refresh - closing the editor and discarding
+    // whatever had been typed. The hash already covers recipients, subject,
+    // body and attachments, which is exactly when the fields should be reset.
+  }, [email.id, email.contentHash]);
 
   const sent = email.status === 'sent';
   const stale = email.status === 'approval_stale';
