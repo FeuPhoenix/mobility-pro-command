@@ -252,7 +252,7 @@ Four things only the real instance found, all now fixed:
 `tests/erpnext-live-quotation.test.ts` remains the offline contract test against
 a Frappe-shaped server, for when no instance is at hand.
 
-### B2. Rehearse the whole thing — *next, and nothing blocks it*
+### B2. Rehearse the whole thing — *half done, nothing blocks the rest*
 
 `node scripts/rehearsal.mjs` sets up a production workspace with three
 providers pointing at one mailbox we control, and stops before approval.
@@ -352,6 +352,10 @@ none.
   match, and `data\backup.log` rendered as `dataackup.log`. Nothing failed
   loudly. `grep -rlP '[\x00-\x08\x0b\x0c\x0e-\x1f]' src tests scripts docs`
   finds them.
+- **The deployed container does not follow `main`.** `git pull` changes the
+  repository, not the running image; without `docker compose up -d --build` you
+  are testing whatever the code was when the container was built. It already
+  cost one rehearsal an hour.
 - **The parsers are the most fragile part.** A regex once read `USD 1200.00` as
   `120`, because its first alternative capped the integer at three digits — and
   every fixture used comma separators, so it stayed invisible until a test used

@@ -190,6 +190,19 @@ curl http://127.0.0.1:4310/api/freight/health
 | Workspace | `production` | Empty, waiting for the first account |
 | Storage | Docker volume `mpc-data` | Survives a rebuild; `docker compose down` **without** `-v` |
 
+### The deployed container does not follow `main`
+
+It runs the image it was built from. After pulling, rebuild, or you are testing
+whatever the code looked like when the container was last made:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+This cost a rehearsal: the Activity tab was checked on an image built before
+the fix that puts email events there, so it showed nothing and looked like a
+defect that had already been fixed.
+
 ### How it is reachable
 
 **<https://side-laptop.taild01073.ts.net:8443>** - over Tailscale, so only from
@@ -283,3 +296,21 @@ against the formats the parsers actually meet.
 
 **Done when** a quotation reaches ERPNext having never been typed into the
 application by hand, and the Activity names who approved and who sent.
+
+### Where the first rehearsal got to, 29 September
+
+Steps 1 to 3 **done, on the pilot instance**: an email was approved,
+downloaded, opened in Outlook as a draft, sent by hand, and recorded. The
+record reads `sentByHand`, not simulated, and the Activity names the person:
+
+```
+email.sent_by_hand   ... recorded sending the RFQ email ... from their own
+                     mailbox. This application did not send it.
+```
+
+That also settles test 2.7 of the handover plan, which needed a real Outlook
+and could not be automated.
+
+Steps 4 and 5 are still to do: reply with a quotation, save it as `.eml`, load
+it under **Replies**, then compare and record. That half is the one that
+exercises the parsers against what a real mail client produces.
