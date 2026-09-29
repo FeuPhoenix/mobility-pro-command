@@ -45,7 +45,8 @@ import { queueSync, runSync } from './service/erp';
 import { syncQuotation, syncRfqQuotations } from './service/erpQuotations';
 import { collectInbox } from './service/collect';
 import { checkConnection } from './service/connections';
-import { addPerson, setPersonDisabled, updatePerson } from './auth/people';
+import { addPerson, setPersonDisabled, setPersonPassword, updatePerson } from './auth/people';
+import { authMode } from './auth/config';
 import { dismissRfqRequest } from './service/intake';
 import { setSetting } from './db';
 
@@ -215,6 +216,7 @@ export const ActionSchema = z.discriminatedUnion('type', [
     companyIds: z.array(z.string()),
   }),
   z.object({ type: z.literal('people.setDisabled'), userId: z.string(), disabled: z.boolean() }),
+  z.object({ type: z.literal('people.setPassword'), userId: z.string(), password: z.string() }),
   z.object({ type: z.literal('rfqRequest.dismiss'), requestId: z.string() }),
   z.object({ type: z.literal('connection.check'), target: z.enum(['mail', 'mailbox', 'erp']) }),
 
@@ -565,12 +567,30 @@ export async function applyFreightAction(ctx: Ctx, action: FreightAction): Promi
 
     case 'people.add': {
       const person = addPerson(ctx, action);
-      return { ok: true, message: `Added ${person.name}. They can sign in with ${person.email}.`, data: person };
+      // In password mode a new account has no password yet, and saying they can
+      // sign in would be untrue.
+      return {
+        ok: true,
+        message:
+          authMode() === 'password'
+            ? `Added ${person.name}. Set a password for them before they can sign in.`
+            : `Added ${person.name}. They can sign in with ${person.email}.`,
+        data: person,
+      };
     }
 
     case 'people.update': {
       const person = updatePerson(ctx, action.userId, action);
       return { ok: true, message: `Updated ${person.name}.`, data: person };
+    }
+
+    case 'people.setPassword': {
+      const person = await setPersonPassword(ctx, action.userId, action.password);
+      return {
+        ok: true,
+        message: `${person.name} can now sign in with their email address and the password you set.`,
+        data: { id: person.id },
+      };
     }
 
     case 'people.setDisabled': {

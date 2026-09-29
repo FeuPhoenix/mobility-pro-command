@@ -120,3 +120,17 @@ application did.
   is real, and its addresses cannot receive email.
 - If something is read wrongly again and again for one provider, tell whoever
   looks after the system and send them an example `.eml`.
+
+## Adding someone to the team
+
+Settings, then People.
+
+1. **Add a person** with their name, work email, role and the companies they
+   work on.
+2. If the workspace uses passwords, **set a password for them** in the same
+   place, and tell them privately. A new account has no password until you do,
+   so they cannot sign in before that.
+3. To end someone's access, open them and **switch off access**. Setting a new
+   password also ends any session they had open.
+
+Only a Logistics Operations Manager can do any of this.

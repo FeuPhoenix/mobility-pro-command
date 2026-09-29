@@ -29,6 +29,7 @@ import {
   type Ctx,
 } from '../repo';
 import type { IdClaims } from './oidc';
+import { passwordProblem, revokeAllForUser, setPassword } from './password';
 
 export const ASSIGNABLE_ROLES: UserRole[] = ['logistics_manager', 'logistics_coordinator', 'viewer'];
 
@@ -208,6 +209,44 @@ export function updatePerson(ctx: Ctx, userId: Id, input: PersonInput): User {
     summary: `${ctx.user.name} updated ${updated.name}: ${ROLE_LABEL[updated.role]}, ${companyIds.length} compan${companyIds.length === 1 ? 'y' : 'ies'}.`,
   });
   return updated;
+}
+
+/**
+ * Gives a person a password, or replaces the one they had.
+ *
+ * Without this a manager could add colleagues who could never sign in:
+ * `addPerson` leaves the hash null, and only first-run setup ever set one. In
+ * password mode that made the People screen a list of accounts nobody could
+ * use.
+ *
+ * Existing sessions for that person are revoked. A password change that leaves
+ * the old session working is not a password change.
+ */
+export async function setPersonPassword(ctx: Ctx, userId: Id, password: string): Promise<User> {
+  assertManager(ctx);
+  const existing = getUser(userId);
+  if (!existing || !listPeople(ctx).some((u) => u.id === userId)) {
+    throw new FreightError('That person was not found.', 404, 'not_found');
+  }
+  if (isSystemRole(existing.role)) {
+    throw new FreightError('That is a system identity, not a person, so it cannot be given a password.');
+  }
+
+  const problem = passwordProblem(password);
+  if (problem) throw new FreightError(problem);
+
+  await setPassword(userId, password);
+  revokeAllForUser(userId);
+
+  audit(ctx, {
+    companyId: null,
+    action: 'person.password_set',
+    subject: `user:${userId}`,
+    // Never the password, and never a hint of it.
+    summary: `${ctx.user.name} set a new password for ${existing.name}. Any sessions they had were ended.`,
+  });
+
+  return { ...existing, canSignIn: true } as User;
 }
 
 export function setPersonDisabled(ctx: Ctx, userId: Id, disabled: boolean): User {

@@ -77,6 +77,7 @@ function PersonForm({ person, onDone }: { person: User | null; onDone: () => voi
   const [name, setName] = React.useState(person?.name ?? '');
   const [email, setEmail] = React.useState(person?.email ?? '');
   const [role, setRole] = React.useState<UserRole>(person?.role ?? 'logistics_coordinator');
+  const [password, setPassword] = React.useState('');
   const [companyIds, setCompanyIds] = React.useState<string[]>(
     person ? person.companyIds.filter((c) => me.companyIds.includes(c)) : me.companyIds.slice(0, 1),
   );
@@ -90,7 +91,15 @@ function PersonForm({ person, onDone }: { person: User | null; onDone: () => voi
     const done = person
       ? await run({ type: 'people.update', userId: person.id, ...payload })
       : await run({ type: 'people.add', ...payload });
-    if (done) onDone();
+    if (!done) return;
+
+    // The password is a separate act with its own audit entry, so it is set
+    // after the details are saved and only when one was typed.
+    if (person && password.trim()) {
+      const set = await run({ type: 'people.setPassword', userId: person.id, password });
+      if (!set) return;
+    }
+    onDone();
   };
 
   return (
@@ -127,6 +136,26 @@ function PersonForm({ person, onDone }: { person: User | null; onDone: () => voi
           </label>
         ))}
       </fieldset>
+      {person && state?.auth?.mode === 'password' ? (
+        <Field
+          label="Set a password"
+          help={
+            person.canSignIn === false
+              ? 'This person has no password yet, so they cannot sign in. Set one and tell them privately.'
+              : 'Leave blank to keep their current password. Setting a new one ends their open sessions.'
+          }
+        >
+          <input
+            className="input"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 10 characters, with a letter and a number"
+          />
+        </Field>
+      ) : null}
+
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <button className="btn primary" disabled={busy} onClick={() => void save()}>
           {person ? 'Save' : 'Add'}
