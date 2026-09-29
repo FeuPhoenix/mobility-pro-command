@@ -40,3 +40,12 @@ samples/
 
 # Scratch scripts used while looking at real samples.
 .lab-*
+
+# Throwaway workspaces and backups made while testing. The application writes a
+# database and attachments into whatever data directory it is given, so ignore
+# the shapes those take rather than relying on remembering.
+.qa*/
+backups/
+*.db
+*.db-shm
+*.db-wal
