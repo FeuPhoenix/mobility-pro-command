@@ -169,3 +169,42 @@ its data, a backup passes `restore --check`, and **Go-live readiness** says
   results, sign-off), `docs/FREIGHT_OWNERSHIP.md` (owners, secrets and their
   expiry, backups), `docs/FREIGHT_USER_GUIDE.md` (for the logistics team).
 - W7 (AI fallback) stays off until someone explicitly authorises the cost.
+
+---
+
+## H. The pilot instance, 29 September 2026
+
+Running on the build machine, in Docker, and **not yet reachable from other
+machines**. Deliberately: Windows Firewall has no inbound rule for 4310, and
+until the first account exists anyone who can reach it could create it.
+
+```bash
+docker compose up -d --build      # already running
+curl http://127.0.0.1:4310/api/freight/health
+```
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| `AUTH_MODE` | `password` | It will be reachable on a network, where the demo picker (act as anyone) is not access control |
+| `FREIGHT_MODE_SWITCH` | `on` | Demo for showing the client, production for the pilot, separate databases |
+| Workspace | `production` | Empty, waiting for the first account |
+| Storage | Docker volume `mpc-data` | Survives a rebuild; `docker compose down` **without** `-v` |
+
+### To finish it, in this order
+
+1. **Create the first account** at <http://127.0.0.1:4310/freight> on the build
+   machine. It becomes the Logistics Operations Manager. Do this *before* the
+   port is opened - first-run setup is open to whoever reaches it first.
+2. **Then** make it reachable, whichever suits:
+   - *Tailscale* (installed here): `tailscale serve --bg 4310`. HTTPS, reachable
+     only from your own tailnet, and no firewall hole. Preferred.
+   - *LAN*: an inbound rule for TCP 4310. That is a firewall change, so it is a
+     decision for whoever owns the machine.
+3. Schedule the backup: `docker compose exec app node scripts/backup.mjs`.
+
+### What it is not
+
+Not a production deployment. The machine has to stay on, there is no TLS unless
+Tailscale provides it, and nothing is monitored. It is enough to run a pilot and
+to show the client, and `docs/FREIGHT_GO_LIVE.md` section F still describes what
+a real deployment needs.

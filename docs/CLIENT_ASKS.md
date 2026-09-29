@@ -83,5 +83,6 @@ committed workflows ship.
 - Are freight providers already Suppliers in ERPNext? (Decides `--supplier-link`.)
 - The real provider list, and the real people with their roles and companies.
 - Ranking weights, the FX source, and when response collection closes.
-- Where it will be deployed. It needs a writable disk, not read-only
-  serverless; `docs/FREIGHT_GO_LIVE.md` section F is the checklist.
+- Where it will live permanently. A pilot instance runs on the build machine
+  now (`docs/FREIGHT_GO_LIVE.md` section H); section F is what a real
+  deployment needs.
