@@ -30,3 +30,10 @@ scripts/.n8n-workflows/
 # Runtime logs from a locally started server
 app.log
 *.log
+
+# Real provider quotations. The repository is public and these carry real rates
+# and real contact addresses: never commit them, whatever they are named.
+samples/
+*.eml
+*.msg
+!tests/fixtures/**/*.eml
