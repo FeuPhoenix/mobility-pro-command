@@ -133,7 +133,37 @@ mail, so a misconfiguration cannot reach a real provider.
 
 ## 5. The work left, in priority order
 
-### A. Validate extraction against the customer's real quotations — *next*
+### A. Validate extraction against the customer's real quotations — *in progress*
+
+**44 real carrier quotations arrived on 29 September** (China and Thailand to
+Jeddah and Dammam). They live outside this repository and must stay there: they
+carry real rates and real contacts, and this repository is public. `.gitignore`
+refuses `.eml`, `.msg` and `samples/` by pattern.
+
+Measure before and after any change:
+
+```bash
+SAMPLES=C:/path/to/eml/folder npx tsx scripts/extraction-report.mts
+```
+
+| Field | Before | Now |
+| --- | --- | --- |
+| Currency | 73% | 80% |
+| Container basis | 5% | 70% |
+| Base freight | 32% | 48% |
+| Transit time | 20% | 36% |
+| Validity | 9% | 25% |
+| Unreadable files | 6 | 1 |
+
+What the samples taught, all now handled: carriers do not write "ocean
+freight", they write `USD5800/40HQ`; `HQ` and `HC` are the same box; and most
+quotations are HTML tables, so a label and its value end up on separate lines.
+Each shape has a test in `tests/real-quotation-formats.test.ts` - **add to that
+file before touching a pattern.**
+
+Still low, and worth the next session: base freight at 48%, and 30 of 44 files
+have money lines the reader cannot place (those are shown to the reviewer
+rather than dropped).
 
 Before they arrive, one thing was done to make that exercise safe: **a line
 carrying an amount that matches no charge rule is reported rather than

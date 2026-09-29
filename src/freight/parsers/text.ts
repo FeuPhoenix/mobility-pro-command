@@ -47,6 +47,43 @@ function findLine(lines: string[], pattern: RegExp): Hit | null {
   return null;
 }
 
+/**
+ * Finds a labelled value, including when the value is on the following line.
+ *
+ * Quotations are usually HTML tables. Flattened to text, a header cell and its
+ * value land on separate lines: "TRANSIT TIME" then "26 days". Reading only
+ * the label line finds the words and misses every figure.
+ *
+ * The value is only taken from a later line when that line parses and carries
+ * no label of its own, so a run of headers cannot borrow the next row.
+ */
+function findLabelled<T>(
+  lines: string[],
+  pattern: RegExp,
+  parse: (fragment: string) => T | null,
+  lookahead = 2,
+): { hit: Hit; value: T } | null {
+  for (let i = 0; i < lines.length; i++) {
+    const m = pattern.exec(lines[i]);
+    if (!m) continue;
+
+    const onTheLine = parse(m[1] ?? m[0]);
+    if (onTheLine !== null) {
+      return { hit: { raw: m[1] ?? m[0], line: lines[i].trim(), lineNumber: i + 1 }, value: onTheLine };
+    }
+
+    for (let j = i + 1; j <= i + lookahead && j < lines.length; j++) {
+      const next = lines[j].trim();
+      if (!next || pattern.test(next)) continue;
+      const value = parse(next);
+      if (value !== null) {
+        return { hit: { raw: next, line: next, lineNumber: j + 1 }, value };
+      }
+    }
+  }
+  return null;
+}
+
 function make<T>(
   value: T | null,
   confidence: Confidence,
@@ -105,12 +142,35 @@ export function parseAmount(fragment: string): { amount: number | null; currency
   return { amount: Number.isFinite(amount) ? amount : null, currency };
 }
 
-const CONTAINER_PATTERN = /\b(20\s?GP|40\s?GP|40\s?HC|45\s?HC|20\s?RF|40\s?RF|LCL|BREAKBULK)\b/i;
+/**
+ * How carriers actually write a container size.
+ *
+ * Across real quotations: `40HQ`, `40'HC`, `40FT HQ CNTR`, `20'GP(USD)`,
+ * `40 HC`. The size and the type are separated by a foot mark, by "FT", by a
+ * space, or by nothing at all.
+ *
+ * **HQ is HC.** High cube is written both ways by different lines, and treating
+ * them as different bases would stop two comparable offers being compared.
+ */
+const CONTAINER_PATTERN = /\b(20|40|45)\s*(?:FT)?\s*['\u2019]?\s*(GP|HC|HQ|DC|ST|RF|RH)\b/i;
+const LOOSE_PATTERN = /\b(LCL|BREAKBULK|BREAK BULK)\b/i;
 
 export function parseContainerType(fragment: string): ContainerType | null {
+  const loose = LOOSE_PATTERN.exec(fragment);
+  if (loose) return loose[1].toUpperCase().replace(/\s+/g, '') as ContainerType;
+
   const m = CONTAINER_PATTERN.exec(fragment);
   if (!m) return null;
-  return m[1].toUpperCase().replace(/\s+/g, '') as ContainerType;
+
+  const size = m[1];
+  const kind = m[2].toUpperCase();
+
+  // A refrigerated rate is not comparable with a dry one, so reefer keeps its own basis.
+  if (kind === 'RF' || kind === 'RH') return size === '20' ? '20RF' : '40RF';
+  // HQ and HC are the same box; DC and ST are the general purpose one.
+  if (kind === 'HC' || kind === 'HQ') return size === '45' ? '45HC' : '40HC';
+  if (size === '45') return '45HC';
+  return size === '20' ? '20GP' : '40GP';
 }
 
 /** "18 days", "18-20 days" (takes the upper bound), "approx 21 days". */
@@ -313,6 +373,26 @@ export interface TextExtraction {
   sparse: boolean;
 }
 
+/**
+ * A line that looks like a rate because it carries money and a box size.
+ *
+ * `USD 7650/40FT HQ CNTR` is a rate; `Total: USD 12,622` is not, and neither
+ * is a surcharge line, so both are stepped over. This is the last resort,
+ * after every labelled form has failed.
+ */
+function rateShapedLine(lines: string[]): Hit | null {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!parseContainerType(line)) continue;
+    if (/\b(total|all[- ]in|grand total|surcharge|thc|baf|isps|doc(umentation)? fee)\b/i.test(line)) continue;
+    if (NOT_A_CHARGE_LINE.test(line)) continue;
+    const { amount } = parseAmount(line);
+    if (amount === null) continue;
+    return { raw: line, line: line.trim(), lineNumber: i + 1 };
+  }
+  return null;
+}
+
 export function extractFromText(source: TextSource): TextExtraction {
   const lines = normaliseLines(source.text);
 
@@ -321,9 +401,15 @@ export function extractFromText(source: TextSource): TextExtraction {
     ? make(lineHit.raw.trim(), 'high', source, lineHit)
     : missing<string>('No shipping line was stated.');
 
+  // Carriers rarely write "ocean freight". Real quotations say `USD5800/40HQ`,
+  // `S/R: USD 7650/40FT HQ CNTR`, or put the figure in a table cell of its own.
+  // So: the labelled line first, then a line that carries an amount together
+  // with a container size, which is what a rate looks like.
   const freightHit =
     findLine(lines, /(?:base (?:ocean )?freight|ocean freight|basic freight|freight rate)\s*[:\-]?\s*(.+)$/i) ??
-    findLine(lines, /^\s*freight\s*[:\-]\s*(.+)$/i);
+    findLine(lines, /^\s*freight\s*[:\-]\s*(.+)$/i) ??
+    findLine(lines, /(?:^|\b)(?:s\/r|o\/f|sell(?:ing)? rate|our rate|rate)\s*[:\-]\s*(.+)$/i) ??
+    rateShapedLine(lines);
   const freightParsed = freightHit ? parseAmount(freightHit.raw) : { amount: null, currency: null };
   const baseFreight =
     freightHit && freightParsed.amount !== null
@@ -342,12 +428,17 @@ export function extractFromText(source: TextSource): TextExtraction {
       : missing<string>('No currency was stated.');
   }
 
-  const basisHit =
-    findLine(lines, /(?:per|basis|rate per|equipment)\s*[:\-]?\s*.*?(20\s?GP|40\s?GP|40\s?HC|45\s?HC|20\s?RF|40\s?RF|LCL)/i) ??
-    (freightHit && parseContainerType(freightHit.line) ? freightHit : null);
+  // The rate line itself is the best evidence: `USD 7650/40FT HQ` says both
+  // things at once. Failing that, any line naming a box will do, but it is
+  // only medium confidence - it may be describing the cargo, not the rate.
+  const basisOnFreightLine = freightHit && parseContainerType(freightHit.line) ? freightHit : null;
+  const basisAnywhere = basisOnFreightLine
+    ? null
+    : findLine(lines, CONTAINER_PATTERN) ?? findLine(lines, LOOSE_PATTERN);
+  const basisHit = basisOnFreightLine ?? basisAnywhere;
   const basisValue = basisHit ? parseContainerType(basisHit.line) : null;
   const containerBasis = basisValue
-    ? make(basisValue, 'high', source, basisHit)
+    ? make(basisValue, basisOnFreightLine ? 'high' : 'medium', source, basisHit)
     : missing<ContainerType>('The rate does not say which container type it applies to.');
 
   const totalHit = findLine(lines, /(?:total|all[- ]in|grand total)\s*(?:cost|rate|price)?\s*[:\-]\s*(.+)$/i);
@@ -357,8 +448,9 @@ export function extractFromText(source: TextSource): TextExtraction {
       ? make(totalParsed.amount, 'high', source, totalHit)
       : missing<number>('The provider did not state a total.');
 
-  const transitHit = findLine(lines, /(?:transit(?:\s*time)?|t\/?t)\s*[:\-]?\s*(.+)$/i);
-  const transitValue = transitHit ? parseDays(transitHit.raw) : null;
+  const transitFound = findLabelled(lines, /(?:transit(?:\s*time)?|t\/?t)\s*[:\-]?\s*(.*)$/i, parseDays);
+  const transitHit = transitFound?.hit ?? null;
+  const transitValue = transitFound?.value ?? null;
   const transitDays =
     transitValue !== null
       ? make(transitValue, /[-to]/i.test(transitHit?.raw ?? '') ? 'medium' : 'high', source, transitHit,
@@ -367,15 +459,25 @@ export function extractFromText(source: TextSource): TextExtraction {
             : null)
       : missing<number>('No transit time was stated.');
 
-  const freeHit = findLine(lines, /free\s*(?:days|time)\s*(?:at\s*destination)?\s*[:\-]?\s*(.+)$/i);
-  const freeValue = freeHit ? parseDays(freeHit.raw) : null;
+  const freeFound = findLabelled(
+    lines,
+    /free\s*(?:days|time)\s*(?:at\s*destination)?\s*[:\-]?\s*(.*)$/i,
+    parseDays,
+  );
+  const freeHit = freeFound?.hit ?? null;
+  const freeValue = freeFound?.value ?? null;
   const freeDaysDestination =
     freeValue !== null
       ? make(freeValue, 'high', source, freeHit)
       : missing<number>('No free days were stated.');
 
-  const validHit = findLine(lines, /(?:valid(?:ity)?(?:\s*until|\s*till|\s*to)?|rate valid|expires?)\s*[:\-]?\s*(.+)$/i);
-  const validValue = validHit ? parseDate(validHit.raw) : null;
+  const validFound = findLabelled(
+    lines,
+    /(?:valid(?:ity)?(?:\s*until|\s*till|\s*to)?|rate valid|expires?)\s*[:\-]?\s*(.*)$/i,
+    parseDate,
+  );
+  const validHit = validFound?.hit ?? null;
+  const validValue = validFound?.value ?? null;
   const validUntil = validValue
     ? make(validValue, 'high', source, validHit)
     : missing<string>('No validity date was stated.');
