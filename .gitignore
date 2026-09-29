@@ -37,3 +37,6 @@ samples/
 *.eml
 *.msg
 !tests/fixtures/**/*.eml
+
+# Scratch scripts used while looking at real samples.
+.lab-*
