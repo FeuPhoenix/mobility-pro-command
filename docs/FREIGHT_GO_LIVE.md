@@ -190,17 +190,57 @@ curl http://127.0.0.1:4310/api/freight/health
 | Workspace | `production` | Empty, waiting for the first account |
 | Storage | Docker volume `mpc-data` | Survives a rebuild; `docker compose down` **without** `-v` |
 
-### To finish it, in this order
+### How it is reachable
 
-1. **Create the first account** at <http://127.0.0.1:4310/freight> on the build
-   machine. It becomes the Logistics Operations Manager. Do this *before* the
-   port is opened - first-run setup is open to whoever reaches it first.
-2. **Then** make it reachable, whichever suits:
-   - *Tailscale* (installed here): `tailscale serve --bg 4310`. HTTPS, reachable
-     only from your own tailnet, and no firewall hole. Preferred.
-   - *LAN*: an inbound rule for TCP 4310. That is a firewall change, so it is a
-     decision for whoever owns the machine.
-3. Schedule the backup: `docker compose exec app node scripts/backup.mjs`.
+**<https://side-laptop.taild01073.ts.net:8443>** - over Tailscale, so only from
+that tailnet, with TLS, and **without opening a firewall port**. Windows
+Firewall still has no inbound rule for 4310, which is deliberate.
+
+```bash
+tailscale serve --bg --https 8443 http://127.0.0.1:4310
+tailscale serve --https=8443 off     # to withdraw it
+```
+
+Port 8443 on purpose: this machine already funnels `/` on 443 to another
+service, and serving on `/` would have replaced it - and published the freight
+workspace to the public internet through that funnel. Check
+`tailscale serve status` before changing any of it.
+
+Sign-in over that address sets a `Secure` cookie, which confirms the
+application is reading `x-forwarded-proto` from the proxy rather than guessing
+from `NODE_ENV`.
+
+### The first account
+
+Created: a throwaway Logistics Operations Manager. First-run setup is closed,
+so nobody else can claim the instance. **Change that password before this is
+reachable by anyone but you** - it was chosen in a chat transcript.
+
+### Backups
+
+A Windows scheduled task, **Mobility Pro Freight nightly backup**, runs
+`scripts
+ightly-backup.cmd` at 02:00 daily. That runs the backup *inside* the
+container, so it captures the volume the application actually uses, and logs to
+`dataackup.log`. Tested by running the task by hand.
+
+Restore-test one at any time - it touches nothing live:
+
+```bash
+docker compose exec app node scripts/restore.mjs --from=/data/freight/backups/<file>.db --check
+```
+
+### Checked on the deployed instance
+
+| Check | Result |
+| --- | --- |
+| Health endpoint | `{"ok":true,"storage":"writable"}` |
+| Wrong password | Refused |
+| Seeding demo data over production | Refused: it would erase the workspace |
+| Switching production to demo while signed out | 401 |
+| Every screen on an **empty** production workspace | Renders, with "Add a company" as the next step, no page errors |
+| Backup, then restore `--check` | Integrity ok |
+| Provider and RFQ import templates | Download as real `.xlsx` |
 
 ### What it is not
 

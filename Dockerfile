@@ -28,8 +28,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/next.config.mjs ./next.config.mjs
-# The backup has to be runnable inside the container it is meant to back up.
+# Both have to be runnable inside the container holding the data. A backup
+# nobody can restore from in place is not a backup.
 COPY --from=build /app/scripts/backup.mjs ./scripts/backup.mjs
+COPY --from=build /app/scripts/restore.mjs ./scripts/restore.mjs
 
 # Runs unprivileged, and owns only its own data.
 RUN mkdir -p /data && chown -R node:node /data
