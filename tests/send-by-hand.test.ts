@@ -23,6 +23,8 @@ import {
 import { createCompany, upsertProvider } from '@/freight/service/providers';
 import { createRfq, prepareRfqEmails, setRecipients } from '@/freight/service/rfq';
 import { approveEmail, editEmail, emailAsEml, markSentByHand } from '@/freight/service/mail';
+import { buildRfqDetail } from '@/freight/view';
+import { getRfq as loadRfq } from '@/freight/repo';
 import type { User } from '@/freight/types';
 
 let manager: Ctx;
@@ -163,3 +165,33 @@ describe('recording that a person sent it', () => {
     expect(listRecipients(rfq.id)[0].sentAt).toBeTruthy();
   });
 });
+
+describe('the request’s activity shows who sent it', () => {
+  it('names the person on the request, not only against the email', () => {
+    // Email events are recorded against the email. Until they were merged in,
+    // a manager reading the request could not see who approved or sent
+    // anything on it - in a product whose premise is that approving is a named
+    // act.
+    const { rfq, email } = prepared();
+    approveEmail(manager, email.id);
+    markSentByHand(manager, email.id);
+
+    const timeline = buildRfqDetail(manager, loadRfq(manager, rfq.id)).timeline;
+    const entry = timeline.find((t) => t.action === 'email.sent_by_hand');
+
+    expect(entry, timeline.map((t) => t.action).join(', ')).toBeTruthy();
+    expect(entry?.summary).toContain('Hala Mansour');
+    expect(timeline.some((t) => t.action === 'email.approved')).toBe(true);
+  });
+
+  it('keeps the whole story in one order', () => {
+    const { rfq, email } = prepared();
+    approveEmail(manager, email.id);
+    markSentByHand(manager, email.id);
+
+    const timeline = buildRfqDetail(manager, loadRfq(manager, rfq.id)).timeline;
+    const times = timeline.map((t) => t.at);
+    expect([...times].sort((a, b) => b.localeCompare(a))).toEqual(times);
+  });
+});
+

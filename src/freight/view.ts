@@ -418,12 +418,16 @@ export function buildRfqDetail(ctx: Ctx, rfq: Rfq): RfqDetail {
   const comparison = latestComparison(ctx, rfq.id);
   const sync = comparison ? getSyncByComparison(comparison.id) : null;
 
-  const timeline = listAudit(ctx, { subject: `rfq:${rfq.id}`, limit: 200 }).map((e) => ({
-    at: e.at,
-    summary: e.summary,
-    actor: e.actorName,
-    action: e.action,
-  }));
+  // Email events are recorded against the email, not the request, so nothing
+  // showed who approved or sent anything on the request that the approvals were
+  // for. For a product whose whole premise is that approving is a named act,
+  // that is the one place it has to be visible.
+  const timeline = [
+    ...listAudit(ctx, { subject: `rfq:${rfq.id}`, limit: 200 }),
+    ...emails.flatMap((e) => listAudit(ctx, { subject: `email:${e.id}`, limit: 50 })),
+  ]
+    .map((e) => ({ at: e.at, summary: e.summary, actor: e.actorName, action: e.action }))
+    .sort((a, b) => b.at.localeCompare(a.at));
 
   return {
     rfq,
