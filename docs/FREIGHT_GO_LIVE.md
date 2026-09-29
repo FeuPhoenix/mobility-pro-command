@@ -248,3 +248,38 @@ Not a production deployment. The machine has to stay on, there is no TLS unless
 Tailscale provides it, and nothing is monitored. It is enough to run a pilot and
 to show the client, and `docs/FREIGHT_GO_LIVE.md` section F still describes what
 a real deployment needs.
+
+---
+
+## I. The dress rehearsal
+
+The customer will not share their providers' addresses for testing, and we
+would not use them if they did: sending a test RFQ to a real carrier is their
+reputation, not ours. The rehearsal uses **one mailbox we control** for every
+provider. The workflow is unchanged - one email per provider, separate records,
+separate quotations - and nothing can reach a third party.
+
+```bash
+BASE=http://127.0.0.1:4310 EMAIL=<manager> PASSWORD=<theirs> TEST_ADDRESS=rfq.test@mobilityp.com node scripts/rehearsal.mjs
+```
+
+It creates a company, three providers, one shipping requirement, and prepares
+the emails. It stops before approval, because approving and sending are a
+person's decision.
+
+### The part a person does
+
+1. Read an email. **Approve** it.
+2. **Download to send yourself**, open it in Outlook, send it to the test
+   mailbox.
+3. **I have sent this myself.**
+4. Reply from that mailbox with a quotation. Save the reply as `.eml` and load
+   it under **Replies → Load .eml files**.
+5. Check the figures, build the comparison, record the quotations in ERPNext.
+
+Use a real carrier's wording for the reply - copy one of the samples and change
+the numbers. A rehearsal against prose we wrote ourselves proves less than one
+against the formats the parsers actually meet.
+
+**Done when** a quotation reaches ERPNext having never been typed into the
+application by hand, and the Activity names who approved and who sent.
