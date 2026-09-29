@@ -172,9 +172,26 @@ quotations are HTML tables, so a label and its value end up on separate lines.
 Each shape has a test in `tests/real-quotation-formats.test.ts` - **add to that
 file before touching a pattern.**
 
-Still low, and worth the next session: base freight at 48%, and 30 of 44 files
-have money lines the reader cannot place (those are shown to the reviewer
-rather than dropped).
+**Transit time and validity are accurate, not incomplete.** Every value they do
+find was checked against its source line: 14 of 14 transit times and 13 of 13
+dates, correct, including ranges (`21 to 22 days` reads 22) and a date found
+under its label on the next line.
+
+What is left of those two is one shape, and it is deliberately not attempted:
+
+```
+Validity | Qingdao | 6800 | ASCL/CAP | 28-Jun | DIR | 27 | 21
+```
+
+A column header whose value sits several rows away, among other numbers. A
+deeper lookahead reads `28-Jun` as the validity when it is probably the sailing
+date - a wrong date silently expires a rate, and a wrong rate reaches the
+comparison. **That needs column awareness, not another regex.** Leave them at
+36% and 25% until someone does it properly.
+
+Still worth the next session: base freight at 48%, and 30 of 44 files have money
+lines the reader cannot place (those are shown to the reviewer rather than
+dropped).
 
 Before they arrive, one thing was done to make that exercise safe: **a line
 carrying an amount that matches no charge rule is reported rather than
