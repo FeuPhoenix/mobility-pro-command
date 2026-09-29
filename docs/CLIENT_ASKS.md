@@ -9,16 +9,23 @@ the workflow runs today. These four turn manual steps into automation.
 
 ---
 
-## 1. Sample quotations as `.eml` — the important one
+> **Updated 29 September.** The samples arrived, and the provider list is off
+> the table: the customer said they cannot test using their providers'
+> contacts. We do not need it. The rehearsal
+> (`docs/FREIGHT_GO_LIVE.md` section I) points every provider at a mailbox we
+> control, so the whole workflow runs without anyone else's address.
+>
+> What is genuinely still theirs: the app registration, their ERPNext, and the
+> Teams webhook. None of it blocks a pilot.
 
-**Who:** Hanan, back shortly.
+## 1. Sample quotations as `.eml` — **received**
 
-This is the only item nobody can work around. Extraction has never met a real
-provider's formatting, so its accuracy is unknown until it does. Expect the
-parsers to need tuning; that is the point of the exercise.
+**Who:** Hanan. **Status:** 44 real quotations arrived 29 September.
 
-Load them from **Replies → Load .eml files**. Add a parser test for each new
-format *before* changing a regex.
+They live outside this repository and must stay there. Measured with
+`scripts/extraction-report.mts`; the numbers and what they mean are in
+`HANDOFF.md` section 5A. Add a parser test for each new format *before*
+changing a regex.
 
 ## 2. Microsoft 365: the app registration
 
@@ -81,7 +88,9 @@ committed workflows ship.
 ## Still open, lower priority
 
 - Are freight providers already Suppliers in ERPNext? (Decides `--supplier-link`.)
-- The real provider list, and the real people with their roles and companies.
+- The real people with their roles and companies. (The provider list is no
+  longer expected for testing; it will be needed at go-live, to send to real
+  providers rather than to ourselves.)
 - Ranking weights, the FX source, and when response collection closes.
 - Where it will live permanently. A pilot instance runs on the build machine
   now (`docs/FREIGHT_GO_LIVE.md` section H); section F is what a real

@@ -39,7 +39,7 @@ workspace holds fictional data.
 ### Confirm it is green before you change anything
 
 ```bash
-npm test                 # 438 unit tests, 9 skipped without a live ERPNext
+npm test                 # 452 unit tests, 9 skipped without a live ERPNext
 npm run test:e2e         # 26 browser tests + 4 skipped, needs a build first
 node scripts/journey.mjs # 65 checks in demo mode, 12 in the signed-in modes
 ```
@@ -251,6 +251,13 @@ Four things only the real instance found, all now fixed:
 
 `tests/erpnext-live-quotation.test.ts` remains the offline contract test against
 a Frappe-shaped server, for when no instance is at hand.
+
+### B2. Rehearse the whole thing — *next, and nothing blocks it*
+
+`node scripts/rehearsal.mjs` sets up a production workspace with three
+providers pointing at one mailbox we control, and stops before approval.
+`docs/FREIGHT_GO_LIVE.md` section I has the five steps a person then does. It
+is the only thing that proves the loop end to end, and it needs nobody else.
 
 ### C. Verify Microsoft Graph sending — *1 day once credentials exist*
 
