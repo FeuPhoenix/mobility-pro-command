@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { toEml, emlFilename, encodeHeaderValue } from '@/freight/mail/eml';
-import { parseEml } from '@/freight/parsers/eml';
+import { parseEml, UnreadableEml } from '@/freight/parsers/eml';
 
 const email = {
   to: [{ name: 'Ann Fahmy', email: 'ann@alpha.test' }],
@@ -140,3 +140,23 @@ describe('the download filename', () => {
     expect(emlFilename('***')).toBe('message.eml');
   });
 });
+
+describe('loading the outgoing file back by mistake', () => {
+  it('says what the file actually is', () => {
+    // A person downloaded the request to send, then loaded it under Replies.
+    // "That email has no readable sender address" is true and useless.
+    try {
+      parseEml(Buffer.from(toEml(email), 'utf8'));
+      throw new Error('it should have been refused');
+    } catch (err) {
+      expect(err).toBeInstanceOf(UnreadableEml);
+      expect((err as Error).message).toMatch(/the request you downloaded to send, not a reply/i);
+    }
+  });
+
+  it('still says the plain thing for a genuinely broken message', () => {
+    const noSender = ['Subject: Rates', '', 'USD 1200 per 40HC', ''].join('\r\n');
+    expect(() => parseEml(Buffer.from(noSender, 'utf8'))).toThrow(/no readable sender address/i);
+  });
+});
+

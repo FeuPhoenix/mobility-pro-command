@@ -327,6 +327,15 @@ export function parseEml(input: Buffer | string): ParsedEml {
 
   const from = parseAddressList(decodeEncodedWords(header(h, 'from') ?? ''))[0];
   if (!from) {
+    // Our own outgoing file, loaded back by mistake. It carries X-Unsent and no
+    // sender on purpose - whoever opens it sends from their own mailbox - and
+    // someone who has just downloaded one has no reason to connect that to
+    // "no readable sender address".
+    if ((header(h, 'x-unsent') ?? '').trim() === '1') {
+      throw new UnreadableEml(
+        'That is the request you downloaded to send, not a reply to it. Send it from your mailbox, then load the provider’s reply here.',
+      );
+    }
     throw new UnreadableEml('That email has no readable sender address.');
   }
 

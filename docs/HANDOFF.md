@@ -346,7 +346,7 @@ of people and roles.
 Each of these cost real time to find. They are written down so they cost you
 none.
 
-- **A `` written into a file by a script can arrive as a backspace.** Two
+- **A `\b` written into a file by a script can arrive as a backspace.** Two
   patterns in `parsers/text.ts` and two documentation paths were silently
   corrupted that way: the regex began with a control character and could never
   match, and `data\backup.log` rendered as `dataackup.log`. Nothing failed

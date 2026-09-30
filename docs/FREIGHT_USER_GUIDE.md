@@ -67,6 +67,10 @@ email can go out from your own Outlook instead:
 3. **I have sent this myself** — this records it, so chasing and the rest of
    the request work normally.
 
+That downloaded file is the *outgoing* request. It is not a reply, and loading
+it back under **Replies** does nothing useful — the application will say so.
+What goes under Replies is what the provider sends back.
+
 The record says a person sent it and names them. It never claims the
 application did.
 
