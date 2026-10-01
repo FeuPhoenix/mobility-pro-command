@@ -238,5 +238,6 @@ looked good.
 4. Do they want discovered providers kept apart from their own list in reports,
    so they can see whether discovery is worth anything?
 
-And one to confirm for A: which addresses may approve? Today it is anyone with
-the manager role. If it should be two named people, say so now.
+And one for A, now answered: **the customer runs this with one person, the
+manager.** Do not build an approval chain or a second approver. One named
+person approves, which is also what the guarantees assume.

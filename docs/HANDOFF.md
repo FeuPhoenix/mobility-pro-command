@@ -14,7 +14,8 @@ answers recorded, `.eml` reading and the ERPNext quotation destination added).
 | Document | When you need it |
 | --- | --- |
 | This file | First. Orientation and what to do next. |
-| `PLAN_BACKGROUND_PIPELINE.md` | **Read this second.** What the customer asked for on 1 October, and the three workstreams that follow. |
+| `PLAN_WEEK.md` | **Read this second if you are picking up the work.** Who does what, this week. |
+| `PLAN_BACKGROUND_PIPELINE.md` | The design behind that plan: what the customer asked for on 1 October, and the three workstreams. |
 | `CLIENT_ASKS.md` | What we are waiting on from the customer, and who owns it. |
 | `FREIGHT_SETUP.md` | Running it, configuration, access control. |
 | `FREIGHT_HANDOVER.md` | Full capability list and the demonstration walkthrough. |
