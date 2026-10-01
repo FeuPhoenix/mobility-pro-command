@@ -199,6 +199,14 @@ Anchor Line Agencies quoted no reference and has two open requests, so nothing
 was assumed. The candidates and the reason are shown; pick one and the
 quotation is extracted by the same parsers.
 
+**7b · Comparison — the screen that carries the argument.**
+RFQ-MPD-2026-0004 is waiting at *Comparison ready*. Three providers answered
+and only two can be compared: the third is held back because its figures are
+incomplete, and the screen says which. The cheapest and the recommended offer
+are shown **separately**, with the reasons and the weights that produced them,
+and the outcome email sits prepared and unapproved, because sending it is a
+person's decision.
+
 **8 · Record — a failure and a recovery.**
 On the overview, RFQ-MPD-2026-0003 shows *Recording failed* after a simulated
 timeout. Press **Retry**: it succeeds on the second attempt, reports two

@@ -381,6 +381,67 @@ export async function seedDemo(): Promise<SeedResult> {
     `${rfq3.reference}: completed, but recording the outcome failed once and is waiting to be retried.`,
   );
 
+  /* ---------- A comparison waiting for the manager to send it -------------- */
+
+  // The demonstration had nothing sitting at "comparison ready": the only
+  // comparison was on a finished request, so the screen that carries the whole
+  // point of the product - cheapest against recommended, with reasons - could
+  // not be shown without building one on the spot.
+  const rfq5 = createRfq(manager, {
+    companyId: companyIds.MPD,
+    title: 'Tyre import, Shekou to Alexandria',
+    originPort: 'CNSHK',
+    destinationPort: 'EGALY',
+    incoterm: 'FOB',
+    containers: [{ type: '40HC', quantity: 4, grossWeightKg: 21_000, commodity: 'Passenger tyres' }],
+    cargoNotes: null,
+    targetShipFrom: day(14),
+    targetShipTo: day(28),
+    responseDeadline: instant(-1, 17),
+    instructions: null,
+    requestedCurrency: 'USD',
+  });
+  setRecipients(manager, rfq5.id, [
+    link('Nile Star Logistics'),
+    link('Levant Maritime Services'),
+    link('Delta Freight Partners'),
+  ]);
+  await approveAndSend(manager, rfq5.id);
+
+  const replies5: [string, string, string, (r: string) => string][] = [
+    ['nilestar', 'yasmine.farouk@nilestar.test', 'Yasmine Farouk', REPLY_NILE_STAR],
+    ['levant', 'rami.haddad@levantmaritime.test', 'Rami Haddad', REPLY_LEVANT],
+    ['delta', 'mostafa.zaki@deltafreight.test', 'Mostafa Zaki', REPLY_DELTA],
+  ];
+  for (const [key, fromEmail, fromName, body] of replies5) {
+    await ingestMessage(manager, {
+      externalId: `demo-msg-rfq5-${key}`,
+      threadId: null,
+      inReplyTo: null,
+      fromEmail,
+      fromName,
+      subject: `RE: ${rfq5.reference}`,
+      receivedAt: instant(-2, 11),
+      bodyText: body(rfq5.reference),
+      attachments: [],
+      simulated: true,
+    });
+  }
+
+  for (const q of listQuotes(manager, rfq5.id)) {
+    if (q.status === 'needs_review') reviewQuote(manager, q.id, { fields: [], confirm: true });
+  }
+  closeRfq(manager, rfq5.id);
+  const comparison5 = await createComparison(manager, rfq5.id);
+
+  // Prepared but deliberately not approved: the outcome email is the last thing
+  // a person decides, and the demonstration should show it waiting for them.
+  prepareComparisonEmail(manager, comparison5.id);
+
+  summary.push(
+    `${rfq5.reference}: compared and recommended, with the outcome email waiting for approval.`,
+  );
+
   /* ------------------ A draft on the second company ------------------------ */
 
   const rfq4 = createRfq(industrial, {
