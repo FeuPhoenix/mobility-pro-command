@@ -381,6 +381,38 @@ export async function seedDemo(): Promise<SeedResult> {
     `${rfq3.reference}: completed, but recording the outcome failed once and is waiting to be retried.`,
   );
 
+  /* ---------- Emails prepared, waiting for a manager to approve ------------ */
+
+  // The first guarantee of the product is that nothing leaves without a named
+  // person approving it. Every other request has already been sent, so there
+  // was nothing to approve and the guarantee could only be described, not
+  // shown.
+  const rfq6 = createRfq(manager, {
+    companyId: companyIds.MPD,
+    title: 'Tyre import, Ningbo to Alexandria',
+    originPort: 'CNNGB',
+    destinationPort: 'EGALY',
+    incoterm: 'FOB',
+    containers: [{ type: '40HC', quantity: 6, grossWeightKg: 22_000, commodity: 'Truck tyres' }],
+    cargoNotes: null,
+    targetShipFrom: day(18),
+    targetShipTo: day(32),
+    responseDeadline: instant(6, 17),
+    instructions: null,
+    requestedCurrency: 'USD',
+  });
+  setRecipients(manager, rfq6.id, [
+    link('Nile Star Logistics'),
+    link('Suez Gateway Shipping'),
+    link('Anchor Line Agencies'),
+  ]);
+  // Prepared and left alone. No approval, so no send is possible.
+  prepareRfqEmails(manager, rfq6.id);
+
+  summary.push(
+    `${rfq6.reference}: three emails prepared and waiting for the manager to approve.`,
+  );
+
   /* ---------- A comparison waiting for the manager to send it -------------- */
 
   // The demonstration had nothing sitting at "comparison ready": the only

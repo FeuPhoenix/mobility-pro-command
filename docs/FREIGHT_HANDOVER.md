@@ -199,8 +199,13 @@ Anchor Line Agencies quoted no reference and has two open requests, so nothing
 was assumed. The candidates and the reason are shown; pick one and the
 quotation is extracted by the same parsers.
 
+**7a · Approval — the first guarantee, shown rather than described.**
+RFQ-MPD-2026-0004 has three emails prepared and nobody has approved them, so
+there is no send control at all. Approve one and it appears; edit the subject
+and the approval is withdrawn in front of you.
+
 **7b · Comparison — the screen that carries the argument.**
-RFQ-MPD-2026-0004 is waiting at *Comparison ready*. Three providers answered
+RFQ-MPD-2026-0005 is waiting at *Comparison ready*. Three providers answered
 and only two can be compared: the third is held back because its figures are
 incomplete, and the screen says which. The cheapest and the recommended offer
 are shown **separately**, with the reasons and the weights that produced them,
