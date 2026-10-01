@@ -14,6 +14,7 @@ answers recorded, `.eml` reading and the ERPNext quotation destination added).
 | Document | When you need it |
 | --- | --- |
 | This file | First. Orientation and what to do next. |
+| `PLAN_BACKGROUND_PIPELINE.md` | **Read this second.** What the customer asked for on 1 October, and the three workstreams that follow. |
 | `CLIENT_ASKS.md` | What we are waiting on from the customer, and who owns it. |
 | `FREIGHT_SETUP.md` | Running it, configuration, access control. |
 | `FREIGHT_HANDOVER.md` | Full capability list and the demonstration walkthrough. |
@@ -135,6 +136,13 @@ mail, so a misconfiguration cannot reach a real provider.
 ---
 
 ## 5. The work left, in priority order
+
+> **Changed on 1 October.** The customer described what they want more
+> precisely in the review: a background pipeline started by a file from Hanan,
+> approval **by email reply** rather than on a screen, and providers found on
+> the open web for a person to accept. Most of it is built; the delta and the
+> order of work are in `PLAN_BACKGROUND_PIPELINE.md`. What follows below is
+> still accurate and still needed.
 
 ### A. Validate extraction against the customer's real quotations — *in progress*
 
