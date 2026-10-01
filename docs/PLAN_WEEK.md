@@ -68,15 +68,24 @@ The application is already a container with its storage on a volume
 (`Dockerfile`, `docker-compose.yml`), so moving it is configuration, not a
 rewrite. Price and write up **three options**, with the numbers:
 
-1. **Their Azure tenant.** Best long-term: their data stays theirs, Entra
-   sign-in works naturally, they own it at handover. Slowest to arrange.
-2. **A small VM we run** (Hetzner, DigitalOcean, Azure). Hours to stand up,
-   a few dollars a month, and it puts their commercial data on our
-   infrastructure - which is a conversation to have deliberately, not by
-   default.
+**The customer has no Azure subscription**, confirmed 1 October. Microsoft 365
+is not Azure: their mailboxes and Entra identities live there, but there is no
+place to run a container. So the three to price are:
+
+1. **A server they already own**, on their premises or wherever their ERPNext
+   runs. Best for them: their commercial data never leaves their estate, and
+   they own it at handover. Ask their ERPNext administrator what that box is -
+   if ERPNext is self-hosted, the answer may already exist.
+2. **A small VM we run** (Hetzner, DigitalOcean, Linode). Hours to stand up, a
+   few dollars a month, and it puts their rates and provider list on our
+   infrastructure - a conversation to have deliberately, not by default.
 3. **A managed container host with a disk** (Fly, Render). Quickest, but check
    the persistent volume carefully: this application needs a real filesystem
    and **will not run on read-only serverless**.
+
+If they later open an Azure subscription, option 1 moves there unchanged. It is
+a container with its storage on a volume; nothing about this decision is
+permanent.
 
 **Do not buy anything without Amr's authorisation.** Bring the three numbers.
 

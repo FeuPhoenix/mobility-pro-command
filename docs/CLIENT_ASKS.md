@@ -92,6 +92,9 @@ committed workflows ship.
   longer expected for testing; it will be needed at go-live, to send to real
   providers rather than to ourselves.)
 - Ranking weights, the FX source, and when response collection closes.
-- Where it will live permanently. A pilot instance runs on the build machine
+- Where it will live permanently. **They have no Azure subscription**
+  (confirmed 1 October), so this is a server of theirs, a VM we run, or a
+  managed host. Their ERPNext administrator probably knows what they already
+  have. A pilot instance runs on the build machine
   now (`docs/FREIGHT_GO_LIVE.md` section H); section F is what a real
   deployment needs.

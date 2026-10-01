@@ -131,7 +131,9 @@ A container definition and its storage are in the repository now:
 | `OPERATIONS_DEMO=off` | Switches the fictional operations demo off inside the app: its routes 404, `/` opens the freight workspace |
 | Settings → **Go-live readiness** | The application checks its own deployment: sign-in, demo data, people, email, ERPNext, backups, the operations demo |
 
-1. Choose a host with a **writable, backed-up disk**: a small VM, Azure App
+1. Choose a host with a **writable, backed-up disk**. The customer has **no
+   Azure subscription** (confirmed 1 October), so the candidates are a server
+   they already own, a small VM, Azure App
    Service on Linux with a persistent volume, Railway, Fly.io, Render with a
    disk. Not read-only serverless — the tracked `vercel.json` covers the
    operations demo, and the freight module will not run there.
