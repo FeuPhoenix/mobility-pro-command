@@ -55,8 +55,23 @@ const cron = (id, name, expression, position) =>
     rule: { interval: [{ field: 'cronExpression', expression }] },
   });
 
-const http = (id, name, method, path, position, notes) =>
-  node(
+/**
+ * A call into the application.
+ *
+ * Three things every one of these needs, which the first version of these
+ * workflows did not have:
+ *
+ *   - **Retries.** A restart, a deploy or a dropped connection should not turn
+ *     into a missed chase. Three tries, five seconds apart, before it counts as
+ *     a failure.
+ *   - **An error output.** Without it a transport failure aborts the execution
+        'The error output of the call lands here. Without this branch a failure aborts the execution and the only trace is the n8n log, which nobody reads.',
+ *     failure is a branch we can route to a human.
+ *   - **The execution id.** Sent as a header so a line in the application's
+ *     audit can be traced back to the run that caused it.
+ */
+const http = (id, name, method, path, position, notes, opts = {}) => ({
+  ...node(
     id,
     name,
     'n8n-nodes-base.httpRequest',
@@ -67,11 +82,64 @@ const http = (id, name, method, path, position, notes) =>
       url: urlFor(path),
       authentication: 'genericCredentialType',
       genericAuthType: 'httpHeaderAuth',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          { name: 'x-run-id', value: '={{ $execution.id }}' },
+          { name: 'x-run-workflow', value: '={{ $workflow.name }}' },
+        ],
+      },
+      ...(opts.body
+        ? {
+            sendBody: true,
+            specifyBody: 'json',
+            jsonBody: opts.body,
+          }
+        : {}),
       // fullResponse so a failure can be branched on rather than thrown.
       options: { response: { response: { neverError: true, fullResponse: true } } },
     },
     notes,
+  ),
+  retryOnFail: true,
+  maxTries: 3,
+  waitBetweenTries: 5000,
+  ...(opts.errorOutput === false ? {} : { onError: 'continueErrorOutput' }),
+});
+
+/**
+ * Walks a list one item at a time.
+ *
+ * A batch of one keeps a single bad item from taking the whole run with it, and
+ * paces the calls instead of firing twenty at once at a server that is also
+ * serving people.
+ */
+const loop = (id, name, position, notes) =>
+  node(
+    id,
+    name,
+    'n8n-nodes-base.splitInBatches',
+    3,
+    position,
+    { batchSize: 1, options: {} },
+    notes,
   );
+
+/** Pulls a list out of a response so the loop has items to walk. */
+const items = (id, name, position, expression, notes) =>
+  node(
+    id,
+    name,
+    'n8n-nodes-base.splitOut',
+    1,
+    position,
+    { fieldToSplitOut: expression, options: {} },
+    notes,
+  );
+
+/** A pause between calls, so a run does not look like a flood. */
+const wait = (id, name, position, seconds, notes) =>
+  node(id, name, 'n8n-nodes-base.wait', 1.1, position, { amount: seconds, unit: 'seconds' }, notes);
 
 const iff = (id, name, position, leftValue, operation, rightValue, notes) =>
   node(
@@ -219,7 +287,7 @@ write(
   workflow(
     'MPC Freight - Deadline chaser',
     [
-      cron('fdc-01', 'Every weekday at 09:00', '0 9 * * 1-5', [260, 300]),
+      cron('fdc-01', 'Every working day at 09:00', '0 9 * * 0-4', [260, 300]),
       http(
         'fdc-02',
         'Who is due a chase?',
@@ -229,30 +297,54 @@ write(
         'The application decides who is due, using the reminder policy in Settings. This workflow supplies the clock, never the judgement. Each provider comes back with the reason.',
       ),
       iff('fdc-03', 'Anyone due?', [700, 300], '={{ $json.body.data.providersDue }}', 'gt', 0),
-      http(
+      items(
         'fdc-04',
-        'Prepare the reminders',
+        'One provider at a time',
+        [920, 200],
+        'body.data.due',
+        'The application returns who is due and why. Walking them one at a time means a single provider that cannot be prepared does not take the rest of the run with it.',
+      ),
+      loop('fdc-05', 'Next provider', [1140, 200], 'Batch of one, so each is prepared and reported on its own.'),
+      http(
+        'fdc-06',
+        'Prepare the reminder',
         'POST',
         '/api/freight/automation/reminders',
-        [920, 220],
-        'Creates DRAFT reminders only. It cannot send: the automation identity is refused by both assertCanApprove and assertCanSend. Every draft waits in the manager approval queue.',
+        [1360, 120],
+        'Creates a DRAFT reminder only. It cannot send: the automation identity is refused by both assertCanApprove and assertCanSend. Every draft waits in the manager approval queue.',
+        { body: '={{ JSON.stringify({ linkId: $json.linkId, rfqId: $json.rfqId }) }}' },
+      ),
+      wait('fdc-07', 'Pause between providers', [1580, 120], 2, 'The server is also serving people. Two seconds apart is plenty for a handful of reminders.'),
+      teams(
+        'fdc-08',
+        'Tell the manager they are waiting',
+        [1360, 420],
+        'Freight: reminders ready for approval',
+        "'Reminders prepared for ' + $items().length + ' provider(s). They are waiting for approval; nothing has been sent.'",
+        'Says reminders are waiting for approval - never that they were sent, because nothing was. Posted once at the end, not once per provider.',
       ),
       teams(
-        'fdc-05',
-        'Tell the manager they are waiting',
-        [1140, 220],
-        'Freight: reminders ready for approval',
-        "$json.body.message",
-        'Says reminders are waiting for approval - never that they were sent, because nothing was.',
+        'fdc-09',
+        'Report a provider that failed',
+        [1580, 280],
+        'Freight: a reminder could not be prepared',
+        "'Could not prepare a reminder: ' + ($json.error?.message ?? $json.body?.error ?? 'no reason given') + '. The rest of the run continued.'",
+        'The error output of the call lands here. Without this branch a failure aborts the execution and the only trace is the n8n log, which nobody reads.',
       ),
-      noop('fdc-06', 'Nothing due', [920, 400]),
+      noop('fdc-10', 'Nothing due', [920, 420], 'The ordinary outcome on most days. Deliberately silent: a message every morning saying there is nothing to do trains people to ignore the channel.'),
     ],
     conn([
-      ['Every weekday at 09:00', 'Who is due a chase?'],
+      ['Every working day at 09:00', 'Who is due a chase?'],
       ['Who is due a chase?', 'Anyone due?'],
-      ['Anyone due?', 'Prepare the reminders', 0],
-      ['Prepare the reminders', 'Tell the manager they are waiting'],
+      ['Who is due a chase?', 'Report a provider that failed', 1],
+      ['Anyone due?', 'One provider at a time', 0],
       ['Anyone due?', 'Nothing due', 1],
+      ['One provider at a time', 'Next provider'],
+      ['Next provider', 'Tell the manager they are waiting', 0],
+      ['Next provider', 'Prepare the reminder', 1],
+      ['Prepare the reminder', 'Pause between providers', 0],
+      ['Prepare the reminder', 'Report a provider that failed', 1],
+      ['Pause between providers', 'Next provider'],
     ]),
     'This workflow never sends. Preparing the same reminder twice is refused by the application and reported as a skip, not an error.',
   ),
@@ -265,7 +357,7 @@ write(
   workflow(
     'MPC Freight - Approval nudge',
     [
-      cron('fan-01', 'Every three hours in office hours', '0 8-18/3 * * 1-5', [260, 300]),
+      cron('fan-01', 'Every three hours in office hours', '0 8-18/3 * * 0-4', [260, 300]),
       http(
         'fan-02',
         'What is waiting for approval?',
@@ -350,7 +442,7 @@ write(
   workflow(
     'MPC Freight - Daily briefing',
     [
-      cron('fdb-01', 'Every weekday at 08:00', '0 8 * * 1-5', [260, 300]),
+      cron('fdb-01', 'Every working day at 08:00', '0 8 * * 0-4', [260, 300]),
       http(
         'fdb-02',
         'Freight summary',
@@ -379,7 +471,7 @@ write(
       noop('fdb-05', 'Quiet day, stay silent', [920, 400]),
     ],
     conn([
-      ['Every weekday at 08:00', 'Freight summary'],
+      ['Every working day at 08:00', 'Freight summary'],
       ['Freight summary', 'Anything worth reporting?'],
       ['Anything worth reporting?', 'Post the briefing', 0],
       ['Anything worth reporting?', 'Quiet day, stay silent', 1],

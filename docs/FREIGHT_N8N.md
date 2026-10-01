@@ -288,3 +288,35 @@ reminder  | awaiting_approval | sentAt: never
 - **Webhooks from n8n into a specific RFQ.** Everything is pull-based on a
   schedule, which is simpler and has no inbound surface to secure beyond the
   token.
+
+---
+
+## What the workflows do beyond calling an endpoint
+
+The first version of these was a schedule, one call and a branch. That is enough
+to demonstrate the seam and not enough to run unattended. What they carry now:
+
+**Retries.** Every call retries three times, five seconds apart. A deploy, a
+restart or a dropped connection should not turn into a missed chase.
+
+**An error output on every call.** Without one, a transport failure aborts the
+execution and the only trace is the n8n log, which nobody reads. With one, the
+failure is a branch that reports to Teams.
+
+**The execution id travels with the request**, as `x-run-id`, so a line in the
+application's audit can be traced back to the run that caused it.
+
+**The chaser walks providers one at a time**, with a pause between them. One
+provider that cannot be prepared no longer takes the rest of the run with it,
+and twenty reminders do not arrive at the server at once while it is also
+serving people.
+
+**Silence when there is nothing to do.** A message every morning saying there is
+nothing to do teaches people to ignore the channel.
+
+### The working week
+
+The schedules run **Sunday to Thursday**, not Monday to Friday. Egypt and Saudi
+Arabia take Friday and Saturday. The first version chased on the customer's
+weekend and stayed silent on two of their working days.
+
